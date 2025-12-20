@@ -30,7 +30,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/");
     } catch (err) {
       setError(String(err));
     } finally {
@@ -56,7 +56,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/");
     } catch (err) {
       setError(String(err));
     } finally {
