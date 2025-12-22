@@ -1,286 +1,210 @@
-# Luohao Xu edsml-lx122
+# Adapted DataPreprocessing for Bengaluru crime hotspot prediction
 
 import os
 import h5py
 import pandas as pd
 import numpy as np
-
 import config
 
 
-class DataPreprocessing():
+class DataPreprocessing:
     def __init__(self, projectDir):
-        """
-        Function to initialise class variables
-
-        Input: projectDir <String>: directory of the project.
-
-        Output: none.
-        """
         self.projectDir = projectDir
-        self.datasetDir = self.projectDir +  '/Data/Datasets/NYPD_Arrests_Data__Historic_.csv'
+        self.datasetDir = (
+            self.projectDir
+            + "/Data/Datasets/20230320020226crime_data_extended_entries.csv"
+        )
+
         self.data = self.readDataset()
 
-        self.dataPivotDir = self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_data_pivot.csv'
-        if not (os.path.isfile(self.dataPivotDir)):
+        self.dataPivotDir = (
+            self.projectDir
+            + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_data_pivot.csv"
+        )
+
+        if not os.path.isfile(self.dataPivotDir):
             self.features, self.labels, self.dataPivot = self.getFeatureLabel()
         else:
             print("Loading pivot data, features and labels")
-            self.dataPivot = pd.read_csv(self.dataPivotDir, index_col=[0,1]) 
+            self.dataPivot = pd.read_csv(self.dataPivotDir, index_col=[0, 1])
 
-            hfFeatures = h5py.File(self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_features.h5', 'r')
-            self.features = np.array(hfFeatures['features'][:])
-            hfLabels= h5py.File(self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_labels.h5', 'r')
-            self.labels = np.array(hfLabels['labels'][:])
+            with h5py.File(
+                self.projectDir
+                + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_features.h5",
+                "r",
+            ) as hf:
+                self.features = np.array(hf["features"][:])
 
-        self.trainDatasetSaveDir = self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_trainvaltest_features.h5'
-        self.trainDatasetSaveDirLable = self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_trainvaltest_labels.h5'
-        if not (os.path.isfile(self.trainDatasetSaveDir)):
+            with h5py.File(
+                self.projectDir
+                + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_labels.h5",
+                "r",
+            ) as hf:
+                self.labels = np.array(hf["labels"][:])
+
+        self.trainFeaturePath = (
+            self.projectDir
+            + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_trainvaltest_features.h5"
+        )
+        self.trainLabelPath = (
+            self.projectDir
+            + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_trainvaltest_labels.h5"
+        )
+
+        if not os.path.isfile(self.trainFeaturePath) or not os.path.isfile(
+            self.trainLabelPath
+        ):
             self.getTrainValTest()
-        if not (os.path.isfile(self.trainDatasetSaveDirLable)):
-            self.getTrainValTest()
-        
+
+    # ------------------------------------------------------------
+
     def preprocessDataset(self, save=True):
-        """
-        Function to preprocess the original NYPD arrest dataset
-        by screened by crime types
-        various useless invalid data were eliminated
-        data labels and data types were reset
+        print("Preprocessing Bengaluru crime dataset...")
 
-        Input:  save <Boolean>: save the preprocessed dataset to the given directory or not.
+        data = pd.read_csv(self.datasetDir)
 
-        Output: data <DataFrame>: preprocessed dataset.
-        """
-        
-        print("Preporcessing dataset...")
-        
-        # load original dataset
-        rawData = pd.read_csv(self.datasetDir)
-        
-        # select cirme type from configuration
-        data = rawData[rawData['OFNS_DESC'].isin(config.CRIME_TYPE)]
-        
-        # select columns that are needed
-        data = data[['OFNS_DESC', 'ARREST_DATE', 'AGE_GROUP', 'PERP_SEX', 'PERP_RACE', 
-                     'Latitude', 'Longitude', 'ARREST_BORO', 'ARREST_PRECINCT']]
-        
-        # rename and lowercase the column name
-        data.rename(columns = {'OFNS_DESC':'TYPE', 'ARREST_DATE':'date', 'AGE_GROUP':'age', 
-                               'PERP_SEX':'gender', 'PERP_RACE':'race',
-                               'ARREST_BORO': 'borough', 'ARREST_PRECINCT': 'precinct'
-                               }, inplace = True)
-        
-        # add a new type column
-        data['type'] = data['TYPE'].str.lower()
-        
-        # clear data outside age groups
-        indexKeepAge = (data['age']=='25-44') | (data['age']=='45-64') | (data['age']=='18-24') | (data['age']=='<18') | (data['age']=='65+')
-        data = data[indexKeepAge]
+        # Standardize column names
+        data.rename(
+            columns={
+                "latitude": "Latitude",
+                "longitude": "Longitude",
+                "crime_type": "TYPE",
+            },
+            inplace=True,
+        )
 
-        # clear data with null race
-        indexKeepRace = (data['race'] != "UNKNOWN") & (data['race'] != "OTHER")
-        data = data[indexKeepRace]
+        # Parse date
+        data["date"] = pd.to_datetime(data["date"], errors="coerce")
+        data.dropna(subset=["date", "Latitude", "Longitude"], inplace=True)
 
-        # set datetime
-        data['date'] = pd.to_datetime(data['date'],format='%m/%d/%Y',errors='coerce')
-        data = data[data['date'] >= pd.to_datetime('2010-1-1')]
-        data = data.dropna()
-        
-        # add month_year data
-        data['month_year'] = pd.DatetimeIndex(data['date']).month_name() + ' ' + pd.DatetimeIndex(data['date']).year.astype('string')
+        # Single crime channel (hotspot intensity)
+        data["type"] = "crime"
 
-        # sort data by time
-        data = data.sort_values(by='date')
-        
-        ## generate cell coordinates count
-        data['X'],data['Y'] = config.coord2grid(data['Latitude'].values, data['Longitude'].values)
-        
-        # remove data outside latitude and longitude boundaries
-        data = data[(data['X'] != -1) & (data['Y'] != -1)]
-        
-        # save dataset
+        # Convert lat/lon → grid
+        data["X"], data["Y"] = config.coord2grid(
+            data["Latitude"].values, data["Longitude"].values
+        )
+
+        # Keep only points inside Bengaluru grid
+        data = data[(data["X"] != -1) & (data["Y"] != -1)]
+
+        data = data[["TYPE", "type", "date", "Latitude", "Longitude", "X", "Y"]]
+        data.sort_values("date", inplace=True)
+
         if save:
-            datasetSaveDir = self.projectDir + '/Data/PreprocessedDatasets'
-            if not os.path.exists(datasetSaveDir):
-                os.makedirs(datasetSaveDir)
-        
-            saved_path = datasetSaveDir + '/' + str(config.CRIME_TYPE_NUM) + '_crimes.csv'
-            data.to_csv(saved_path)
+            outdir = self.projectDir + "/Data/PreprocessedDatasets"
+            os.makedirs(outdir, exist_ok=True)
+            data.to_csv(
+                outdir + f"/{config.CRIME_TYPE_NUM}_crimes.csv", index=False
+            )
 
         return data
-        
+
+    # ------------------------------------------------------------
+
     def readDataset(self):
-        """
-        Function that load dataset. If there is no dataset, run preprocessDataset() and load.
-
-        Input: none.
-
-        Output: data <DataFrame>: loaded dataset
-        """
-        
         print("Loading crime dataset...")
-        
-        # determine if there is preprocessed dataset
-        datasetSaveDir = self.projectDir + '/Data/PreprocessedDatasets/' + str(config.CRIME_TYPE_NUM) + '_crimes.csv'
-        if not (os.path.isfile(datasetSaveDir)):
+
+        savePath = (
+            self.projectDir
+            + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_crimes.csv"
+        )
+
+        if not os.path.isfile(savePath):
             self.preprocessDataset()
-            
-        data = pd.read_csv(datasetSaveDir)
-        # set datetime
-        data['date'] = pd.to_datetime(data['date'],format='%Y-%m-%d',errors='coerce')
+
+        data = pd.read_csv(savePath)
+        data["date"] = pd.to_datetime(data["date"], errors="coerce")
         data.dropna(inplace=True)
-        # sort by time
-        data.sort_values(by='date', inplace=True)
+        data.sort_values("date", inplace=True)
 
         return data
-    
+
+    # ------------------------------------------------------------
+
     def getPivotData(self):
-        """
-        Function to create crime timetable. Each row is crime counts of each grid with different crime type.
-
-        Input: none.
-
-        Output: dataPivot <DataFrame>: cirme timetable.
-        """
-        
         print("Creating crime timetable...")
-        
-        data = self.data
-        # only select type date and location grid count
-        data = data[['TYPE','date','type','X','Y']]
-        
-        # create a pivot table
-        dataPivot = data.pivot_table(values='TYPE', index=['date','type'], columns=['X','Y'], aggfunc='count')
-            
-        # flatten the columns
-        dataPivot.columns = dataPivot.columns.to_flat_index()
-        
-        # get all grids combinations
-        xAll = np.arange(1, config.LAT_GRIDS+1, 1)
-        yAll = np.arange(1, config.LON_GRIDS+1, 1)
-        xyAll = [(x,y) for x in xAll for y in yAll]
 
-        # get all date*crime combinations
-        uniqueDates = data['date'].unique()
-        uniqueType = data['type'].unique()
-        indexAll = [(x,y) for x in uniqueDates for y in uniqueType]
+        data = self.data[["TYPE", "date", "type", "X", "Y"]]
 
-        # reindex with all grid combinations and date-crime combinations
-        dataPivot = dataPivot.reindex(indexAll).reindex(columns=xyAll).fillna(0)
-        
-        # set datatype to int
-        dataPivot = dataPivot.astype('int8')
+        pivot = data.pivot_table(
+            values="TYPE",
+            index=["date", "type"],
+            columns=["X", "Y"],
+            aggfunc="count",
+        )
 
-        return dataPivot
-    
+        pivot.columns = pivot.columns.to_flat_index()
+
+        xAll = np.arange(1, config.LAT_GRIDS + 1)
+        yAll = np.arange(1, config.LON_GRIDS + 1)
+        xyAll = [(x, y) for x in xAll for y in yAll]
+
+        dates = data["date"].unique()
+        indexAll = [(d, "crime") for d in dates]
+
+        pivot = pivot.reindex(indexAll).reindex(columns=xyAll).fillna(0)
+        pivot = pivot.astype("int8")
+
+        return pivot
+
+    # ------------------------------------------------------------
+
     def getFeatureLabel(self):
-        """
-        Function to generate feature and label pair used for training the ConvLSTM model
-
-        Inputs: none.
-
-        Output: features <array>: feature data of 12 days each, 
-                labels <array>: label data of 1 day each,
-                dataPivot <DataFrame>
-        """
-
         print("Generating features and labels...")
-        
-        dataPivot = self.getPivotData()
-        crimeArr = dataPivot.values
-        
-        # reshape the array to have 50*50 grids (xxx, type, 50, 50)
-        data = crimeArr.reshape((-1,len(config.CRIME_TYPE),config.LAT_GRIDS,config.LON_GRIDS))
+
+        pivot = self.getPivotData()
+        arr = pivot.values
+
+        data = arr.reshape(
+            (-1, 1, config.LAT_GRIDS, config.LON_GRIDS)
+        )
+
         seq_len = config.SEQ_LEN
-        
-        features = []
-        labels = []
-        # generate feature-lable pairs
-        for i in np.arange(0,data.shape[0]-(seq_len+1)): # minus first day slot
-            feature = data[i:i+seq_len]
-            features.append(feature)
-            
-            label = data[i+seq_len+1]
-            labels.append(label)
+        X, Y = [], []
 
-        features = np.array(features)
-        labels = np.array(labels)
-        # make numbers to int (0 or 1) as most number is one or zero.
-        features = (features>0).astype(int)
-        labels = (labels>0).astype(int)
-        
-        minus_days = config.SEQ_LEN + 1
-        # set start date of dataset
-        if (dataPivot.query(f"date < {config.START_DATE}").shape[0] == 0):
-            startIndex = 0
-        else:
-            startIndex = int(dataPivot.query(f"date < {config.START_DATE}").shape[0] / config.CRIME_TYPE_NUM - minus_days)
-        features = features[startIndex: ]
-        labels = labels[startIndex: ]
+        for i in range(len(data) - (seq_len + 1)):
+            X.append(data[i : i + seq_len])
+            Y.append(data[i + seq_len + 1])
 
-        with h5py.File(self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_features.h5', 'w') as hf:
-            hf.create_dataset("features",  data=features)
-        with h5py.File(self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_labels.h5', 'w') as hf:
-            hf.create_dataset("labels",  data=labels)
-        
-        dataPivot.to_csv(self.dataPivotDir)
-        
-        return features, labels, dataPivot
-    
+        X = (np.array(X) > 0).astype(int)
+        Y = (np.array(Y) > 0).astype(int)
+
+        with h5py.File(
+            self.projectDir
+            + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_features.h5",
+            "w",
+        ) as hf:
+            hf.create_dataset("features", data=X)
+
+        with h5py.File(
+            self.projectDir
+            + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_labels.h5",
+            "w",
+        ) as hf:
+            hf.create_dataset("labels", data=Y)
+
+        pivot.to_csv(self.dataPivotDir)
+
+        return X, Y, pivot
+
+    # ------------------------------------------------------------
+
     def getTrainValTest(self):
-        """
-        Function that split features and labels into train validation and test dataset and save them.
+        print("Splitting Train / Val / Test dataset...")
 
-        Input: none
+        X, Y = self.features, self.labels
 
-        Output: none
-        """
-        
-        print("Spliting Train Val Test dataset...")
-        features, labels, dataPivot = self.features, self.labels, self.dataPivot
-        
-        # get split index by split date
-        minus_days = config.SEQ_LEN + 1
-        
-        if (dataPivot.query(f"date < {config.START_DATE}").shape[0] == 0):
-            startIndex = 0
-        else:
-            startIndex = int(dataPivot.query(f"date < {config.START_DATE}").shape[0] / config.CRIME_TYPE_NUM - minus_days)
-        trainValIndex  = int(dataPivot.query(f"date < {config.TRAIN_VAL_DATE}").shape[0] / config.CRIME_TYPE_NUM - minus_days) - startIndex
-        valTestIndex   = int(dataPivot.query(f"date < {config.VAL_TEST_DATE}").shape[0] / config.CRIME_TYPE_NUM - minus_days) - startIndex
-        
-        # Divide features and labels into train and test. 11 years of data is used for training (2010-2020) 
-        # 1 year of data for validation (2021) and 1 year of data for testing (2022)
-        featuresTrain = features[:trainValIndex]
-        featuresVal = features[trainValIndex:valTestIndex]
-        featuresTest = features[valTestIndex:]
+        n = len(X)
+        t1 = int(0.7 * n)
+        t2 = int(0.85 * n)
 
-        labelsTrain = labels[:trainValIndex]
-        labelsVal = labels[trainValIndex:valTestIndex]
-        labelsTest = labels[valTestIndex:]
-        
-        print("features train shape: ", featuresTrain.shape)
-        print("features val shape: ", featuresVal.shape)
-        print("features test shape: ", featuresTest.shape)
-        print(" ")
-        print("labels train shape: ", labelsTrain.shape)
-        print("labels val shape: ", labelsVal.shape)
-        print("labels test shape: ", labelsTest.shape)
-        print(" ")
-        print("all features shape", features.shape)
-        print("all labels shape", labels.shape)
- 
-        # Save the features and labels as pickle files
-        with h5py.File(self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_trainvaltest_features.h5', 'w') as hf:
-            hf.create_dataset("train",  data=featuresTrain)
-            hf.create_dataset("val", data=featuresVal)
-            hf.create_dataset("test", data=featuresTest)
-            
-        with h5py.File(self.projectDir + f'/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_trainvaltest_labels.h5', 'w') as hf:
-            hf.create_dataset("train",  data=labelsTrain)
-            hf.create_dataset("val",  data=labelsVal)
-            hf.create_dataset("test",  data=labelsTest)
-        
-    
-    
-    
+        with h5py.File(self.trainFeaturePath, "w") as hf:
+            hf.create_dataset("train", data=X[:t1])
+            hf.create_dataset("val", data=X[t1:t2])
+            hf.create_dataset("test", data=X[t2:])
+
+        with h5py.File(self.trainLabelPath, "w") as hf:
+            hf.create_dataset("train", data=Y[:t1])
+            hf.create_dataset("val", data=Y[t1:t2])
+            hf.create_dataset("test", data=Y[t2:])

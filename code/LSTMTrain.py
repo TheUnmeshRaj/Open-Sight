@@ -1,11 +1,9 @@
-# Luohao Xu edsml-lx122
+# Luohao Xu edsml-lx122 (Edited for stability & low disk usage)
 
 import os
 import torch
 import numpy as np
 from sklearn.metrics import recall_score, precision_score, f1_score
-from sklearn.metrics import classification_report
-from pathlib import Path
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
@@ -17,317 +15,193 @@ from DataPreLoader import DataPreLoader
 from LSTMModel import ConvLSTMModel
 from DataPreprocessing import DataPreprocessing
 
-def bceLoss(pred,target,weights=config.BCE_WEIGHTS):
-    '''
-    Calculate weighted binary cross entropy loss
-    
-    Inputs - pred: predicted probability scores [batch_size, 1, crime_types, h, w]
-             target: binned target values
-             weights: binary entropy weights
-    '''
-    pred = torch.clamp(pred,min=1e-7,max=1-1e-7)
-    bce = - weights[1] * target * torch.log(pred) - (1 - target) * weights[0] * torch.log(1 - pred)
-    return torch.mean(bce)
+
+# --------------------------------------------------
+# Weighted BCE Loss
+# --------------------------------------------------
+def bceLoss(pred, target, weights=config.BCE_WEIGHTS):
+    pred = torch.clamp(pred, min=1e-7, max=1 - 1e-7)
+    loss = - weights[1] * target * torch.log(pred) \
+           - (1 - target) * weights[0] * torch.log(1 - pred)
+    return torch.mean(loss)
 
 
-def train(train_dl, val_dl, model, optim, scheduler, epochs, batch_size, save, start_epoch, model_save_path):
-    '''
-    Training loop
-    Inputs - train_dl: training data loader
-             val_dl: validation data loader
-             model: model to be trained
-             optim: optimser
-             epochs: total number of epochs
-             batch_size: batch size
-             save: whether to save model checkpoints
-             start_epoch: starting epoch number
-             model_save_path: path to save trained model
-    '''
-    optim_name = type(optim).__name__
-    writer = SummaryWriter(comment='-optim-({})_lr-({})_bs-({})_threshold-({})_rs-({})-nepoch-({})_weights-({})'
-                            .format(optim_name, config.LEARNING_RATE, config.TRAIN_BATCH_SIZE, 
-                            config.CLASS_THRESH, config.RANDOM_SEED, config.N_EPOCHS, config.BCE_WEIGHTS))
-    
-    # add network graph to the tensorboard
-    example_input = torch.zeros(config.TRAIN_BATCH_SIZE, config.SEQ_LEN, config.CRIME_TYPE_NUM, config.LAT_GRIDS, config.LON_GRIDS).to(config.DEVICE)
-    writer.add_graph(model, (example_input,))
-    
+# --------------------------------------------------
+# Training Loop
+# --------------------------------------------------
+def train(train_dl, val_dl, model, optim, scheduler, epochs, batch_size):
+
+    writer = SummaryWriter(comment="-CrimeHotspot")
+
     best_model = model
+    best_loss = float("inf")
     best_epoch = 0
-    best_loss = 10000.0
 
-    for epoch in range(start_epoch,epochs):
+    for epoch in range(epochs):
+        print(f"\nEpoch {epoch + 1}/{epochs}\n")
 
-        print(f'\n Epoch: {epoch} \n')
+        model.train()
         epoch_loss = 0.0
         total = 0
-        all_outputs = list()
-        all_targets = list()
-        model.train()
 
-        for i, (X, Y) in enumerate(tqdm(train_dl, ncols=75)):
-            if Y.shape[0] == batch_size:
+        for X, Y in tqdm(train_dl, ncols=75):
+            if Y.shape[0] != batch_size:
+                continue
 
-                pred_scores = model(X)
-                pred_scores = pred_scores.view(batch_size,-1)
-                wce_loss = bceLoss(pred_scores, Y)                
+            pred = model(X).view(batch_size, -1)
+            loss = bceLoss(pred, Y)
 
-                optim.zero_grad()
-                wce_loss.backward()
-                optim.step()
-                pred_bin = (pred_scores > config.CLASS_THRESH).float() 
-                # all_outputs.append(pred_bin.view(-1,1).detach().cpu().numpy())
-                # all_targets.append(Y.view(-1,1).detach().cpu().numpy())
-                total += Y.shape[0]
-                epoch_loss += wce_loss.item()
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+
+            epoch_loss += loss.item()
+            total += 1
+
         scheduler.step()
+        train_loss = epoch_loss / max(total, 1)
 
-        # all_outputs = np.concatenate(all_outputs)        
-        # all_targets = np.concatenate(all_targets)
-        # recall = recall_score(y_pred=all_outputs,y_true=all_targets,average='weighted') ################################ x3333333333
-        # precision = precision_score(y_pred=all_outputs,y_true=all_targets,average='weighted') ################################ x3333333333
-        # f1score = f1_score(y_pred=all_outputs,y_true=all_targets,average='weighted')
+        # ---- Validation ----
+        val_loss, val_f1, val_recall, val_precision = validate(
+            val_dl, model, batch_size
+        )
 
-        avg_loss = epoch_loss/total
+        print(f"Train Loss: {train_loss:.5f}")
+        print(f"Val   Loss: {val_loss:.5f}")
 
-        # print(f'Train Recall Score: {recall}')
-        # print(f'Train Precision Score: {precision}')
+        writer.add_scalar("Loss/Train", train_loss, epoch)
+        writer.add_scalar("Loss/Val", val_loss, epoch)
+        writer.add_scalar("F1/Val", val_f1, epoch)
+        writer.add_scalar("Recall/Val", val_recall, epoch)
+        writer.add_scalar("Precision/Val", val_precision, epoch)
 
-        best_model, best_loss, best_epoch, val_f1, val_recall, val_precision, val_avg_loss = validate(val_dl, model, batch_size, epoch, best_loss, best_model, best_epoch, writer)
-
-        print(f'Train Loss: {avg_loss}')
-        print(f'Validation Loss: {val_avg_loss}')
-        
-        writer.add_scalar('Loss/Train', avg_loss, epoch)
-        writer.add_scalar('Loss/Val', val_avg_loss, epoch)
-        # writer.add_scalar('Recall Score/Train', recall, epoch)
-        writer.add_scalar('Recall Score/Val', val_recall, epoch)
-        # writer.add_scalar('Precision Score/Train', precision, epoch)
-        writer.add_scalar('Precision Score/Val', val_precision, epoch)
-        # writer.add_scalar('F1 Score/Train', f1score, epoch)
-        writer.add_scalar('F1 Score/Val', val_f1, epoch)
-
-
-        if save:
-            print('Saving model')
-            checkpoint = {
-                'model': model.state_dict(),
-                'optim': optim.state_dict,
-                'epoch': epoch     
-            }
-            torch.save(checkpoint,model_save_path+f'/CheckPoint__bs-({config.TRAIN_BATCH_SIZE})_threshold-({config.CLASS_THRESH})_weights-({config.BCE_WEIGHTS}).pt')
-    
-    writer.close()
-
-    return best_model, best_loss, best_epoch
-
-
-def validate(dl, model, batch_size, epoch ,best_loss, best_model, best_epoch, writer):
-    '''
-    Validation loop
-
-    Inputs - dl: validation data loader
-             model: trained model
-             batch_size: batch size
-             epoch: current epoch number
-             best_recall: current best recall score
-             best model: current best model
-             writer: tensorboard summary writer
-    '''
-
-    model.eval()
-
-    epoch_loss = 0.0
-    total = 0
-    all_outputs = list()
-    all_outputs_probs = list()
-    all_targets = list()
-
-    with torch.no_grad():
-        for i, (X, Y) in enumerate(dl):
-            if Y.shape[0] == batch_size:                
-                pred_scores = model(X)
-                pred_scores = pred_scores.view(batch_size,-1)
-                wce_loss = bceLoss(pred_scores, Y)
-
-                if i == 0 or i == 1:
-                    pred_bin_sum = (pred_scores > config.CLASS_THRESH).float().sum()
-                    print(f'Pred Score Sum - {i}: {pred_bin_sum}')
-
-                pred_bin = (pred_scores > config.CLASS_THRESH).float()
-                all_outputs.append(pred_bin.view(-1,1).detach().cpu().numpy())
-                all_targets.append(Y.view(-1,1).detach().cpu().numpy())
-                all_outputs_probs.append(pred_scores.view(-1,1).detach().cpu().numpy())
-                total += Y.shape[0]
-                epoch_loss += wce_loss.item()
-                
-        all_outputs = np.concatenate(all_outputs)
-        all_targets = np.concatenate(all_targets)
-        all_outputs_probs = np.concatenate(all_outputs_probs)
-        
-        recall = recall_score(y_pred=all_outputs,y_true=all_targets,average='weighted')
-        precision = precision_score(y_pred=all_outputs,y_true=all_targets,average='weighted')
-        f1score = f1_score(y_pred=all_outputs, y_true=all_targets,average='weighted')
-        writer.add_pr_curve('pr_curve', all_targets, all_outputs_probs, global_step=0)
-        writer.close()
-        
-        avg_loss = epoch_loss/total
-
-        if epoch == 0:
+        # ---- Save only BEST model (CRITICAL FIX) ----
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_epoch = epoch
             best_model = model
-            best_loss = avg_loss
-            best_epoch = 0
-        else:
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                best_model = model
-                best_epoch = epoch
 
-        
-
-    print(f'Validation Recall Score: {recall}')
-    print(f'Validation Precision Score: {precision}')
-    print(f'Validation F1 score: {f1score}')
-
-    return best_model, best_loss, best_epoch, f1score, recall, precision, avg_loss
+    writer.close()
+    return best_model, best_epoch
 
 
-def test(dl, model, batch_size):
-    '''
-    Testing loop
-    Inputs - dl: test data loader
-             model: trained model
-             batch_size: batch size
-    '''
-
+# --------------------------------------------------
+# Validation Loop
+# --------------------------------------------------
+def validate(dl, model, batch_size):
     model.eval()
 
     epoch_loss = 0.0
     total = 0
-    pred_bin_total = 0
-    # total_cells = 0
-    all_outputs = list()
-    all_targets = list()
+    all_preds = []
+    all_targets = []
 
     with torch.no_grad():
         for X, Y in dl:
-            if Y.shape[0] == batch_size:
+            if Y.shape[0] != batch_size:
+                continue
 
-                pred_scores = model(X)
-                pred_scores = pred_scores.view(batch_size,-1)
-                wce_loss = bceLoss(pred_scores, Y)
+            pred = model(X).view(batch_size, -1)
+            loss = bceLoss(pred, Y)
 
-                pred_bin = (pred_scores > config.CLASS_THRESH).float()
-                all_outputs.append(pred_bin.view(-1,1).detach().cpu().numpy())
-                all_targets.append(Y.view(-1,1).detach().cpu().numpy())
-                total += Y.shape[0]
-                epoch_loss += wce_loss.item()
-                pred_bin_total += pred_bin.sum()
-                # total_cells += int(config.TRAIN_BATCH_SIZE*config.LAT_GRIDS*config.LON_GRIDS)
-            
-        all_outputs = np.concatenate(all_outputs)
-        all_targets = np.concatenate(all_targets)
-        recall = recall_score(y_pred=all_outputs,y_true=all_targets,average='weighted')
-        f1score = f1_score(y_pred=all_outputs, y_true=all_targets,average='weighted')
-        precision = precision_score(y_pred=all_outputs,y_true=all_targets,average='weighted')
+            pred_bin = (pred > config.CLASS_THRESH).float()
 
-        report = classification_report(all_targets, all_outputs, output_dict=True)
+            all_preds.append(pred_bin.cpu().numpy().reshape(-1))
+            all_targets.append(Y.cpu().numpy().reshape(-1))
 
-        avg_loss = epoch_loss/total
-        # avg_per_pred_bin = (pred_bin_total/total_cells) * 100
+            epoch_loss += loss.item()
+            total += 1
 
-    print(" ")
-    print(f'Test Loss: {avg_loss}')
-    print(f'Test Recall Score: {recall}')
-    print(f'Test Precision Score: {precision}')
-    print(f'Test F1 Score: {f1score}')
-    # print(f'Average % Predicted Hotspots: {avg_per_pred_bin}')
+    all_preds = np.concatenate(all_preds)
+    all_targets = np.concatenate(all_targets)
 
-    return avg_loss, f1score, recall, precision, report
+    recall = recall_score(all_targets, all_preds, zero_division=0)
+    precision = precision_score(all_targets, all_preds, zero_division=0)
+    f1 = f1_score(all_targets, all_preds, zero_division=0)
 
-if __name__ == '__main__':
-    
-    start_epoch = 0
+    return epoch_loss / max(total, 1), f1, recall, precision
+
+
+# --------------------------------------------------
+# Test Loop
+# --------------------------------------------------
+def test(dl, model, batch_size):
+    model.eval()
+
+    all_preds = []
+    all_targets = []
+
+    with torch.no_grad():
+        for X, Y in dl:
+            if Y.shape[0] != batch_size:
+                continue
+
+            pred = model(X).view(batch_size, -1)
+            pred_bin = (pred > config.CLASS_THRESH).float()
+
+            all_preds.append(pred_bin.cpu().numpy().reshape(-1))
+            all_targets.append(Y.cpu().numpy().reshape(-1))
+
+    all_preds = np.concatenate(all_preds)
+    all_targets = np.concatenate(all_targets)
+
+    recall = recall_score(all_targets, all_preds, zero_division=0)
+    precision = precision_score(all_targets, all_preds, zero_division=0)
+    f1 = f1_score(all_targets, all_preds, zero_division=0)
+
+    print("\nTest Results")
+    print(f"Recall:    {recall}")
+    print(f"Precision: {precision}")
+    print(f"F1 Score:  {f1}")
+
+    return recall, precision, f1
+
+
+# --------------------------------------------------
+# Main
+# --------------------------------------------------
+if __name__ == "__main__":
 
     torch.manual_seed(config.RANDOM_SEED)
     device = torch.device(config.DEVICE)
-    
-    prepDatasetsPath = config.PROJECT_DIR + '/Data/PreprocessedDatasets'
 
-    if not os.path.exists(Path(prepDatasetsPath + f'/{config.CRIME_TYPE_NUM}_features.h5')):
-        dp = DataPreprocessing(config.PROJECT_DIR)
-    
-    train_data = DataPreLoader(prepDatasetsPath = prepDatasetsPath,
-                                device=device,
-                                name = 'train')
-    
-    val_data = DataPreLoader(prepDatasetsPath = prepDatasetsPath,
-                                device=device,
-                                name = 'val')
+    prep_path = config.PROJECT_DIR + "/Data/PreprocessedDatasets"
 
-    test_data = DataPreLoader(prepDatasetsPath = prepDatasetsPath,
-                                device=device,
-                                name = 'test')
+    if not os.path.exists(prep_path + f"/{config.CRIME_TYPE_NUM}_features.h5"):
+        DataPreprocessing(config.PROJECT_DIR)
 
-    train_loader = DataLoader(train_data, batch_size=config.TRAIN_BATCH_SIZE)
-    val_loader = DataLoader (val_data, batch_size=config.TRAIN_BATCH_SIZE)
-    test_loader = DataLoader(test_data, batch_size=config.TRAIN_BATCH_SIZE)
+    train_data = DataPreLoader(prep_path, device, "train")
+    val_data = DataPreLoader(prep_path, device, "val")
+    test_data = DataPreLoader(prep_path, device, "test")
 
-    model_save_path = config.MODEL_SAVE_PATH
-    if not os.path.exists(Path(model_save_path)):
-        os.makedirs(Path(model_save_path))
+    train_dl = DataLoader(train_data, batch_size=config.TRAIN_BATCH_SIZE)
+    val_dl = DataLoader(val_data, batch_size=config.TRAIN_BATCH_SIZE)
+    test_dl = DataLoader(test_data, batch_size=config.TRAIN_BATCH_SIZE)
 
-    model = ConvLSTMModel(input_dim=config.CRIME_TYPE_NUM, hidden_dim=config.HIDDEN_DIM, kernel_size=config.KERNEL_SIZE,bias=True)
+    model = ConvLSTMModel(
+        input_dim=config.CRIME_TYPE_NUM,
+        hidden_dim=config.HIDDEN_DIM,
+        kernel_size=config.KERNEL_SIZE,
+        bias=True
+    ).to(device)
+
     optim = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.CyclicLR(optim, base_lr=config.LEARNING_RATE, max_lr=6*config.LEARNING_RATE,cycle_momentum=False,step_size_up=500)
-    optim_name = type(optim).__name__
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=3, gamma=0.5)
 
-    try:
-        checkpoint = torch.load(model_save_path+f'/CheckPoint__bs-({config.TRAIN_BATCH_SIZE})_threshold-({config.CLASS_THRESH})_weights-({config.BCE_WEIGHTS}).pt')
-        model.load_state_dict(checkpoint['model'])
-        print('\n Model Loaded \n')
-        start_epoch = checkpoint['epoch'] + 1
-    except:
-        pass
-    model.to(device)
+    print("\nTraining started\n")
+    best_model, best_epoch = train(
+        train_dl, val_dl, model, optim, scheduler,
+        config.N_EPOCHS, config.TRAIN_BATCH_SIZE
+    )
 
-    try:
-        optim.load_state_dict(checkpoint['optim'])
-        print('\n Optimizer Loaded \n')
-    except:
-        pass
+    print("\nTesting best model\n")
+    test(test_dl, best_model, config.TRAIN_BATCH_SIZE)
 
-    save = True
+    # ---- Save ONE final model only ----
+    save_path = config.MODEL_SAVE_PATH + "/BestModel.pt"
+    torch.save(
+        {"model": best_model.state_dict(), "epoch": best_epoch},
+        save_path
+    )
 
-
-    print('\n Training Starts \n')
-
-    best_model, best_loss, best_epoch = train(train_dl=train_loader,
-                                            val_dl=val_loader,
-                                            model=model,
-                                            optim=optim,
-                                            scheduler=scheduler,
-                                            epochs=config.N_EPOCHS,
-                                            batch_size=config.TRAIN_BATCH_SIZE,
-                                            save=save,
-                                            start_epoch=start_epoch,
-                                            model_save_path=model_save_path)
-                
-    test_loss, _ ,test_recall, _ = test(dl=test_loader, model=best_model, batch_size=config.TRAIN_BATCH_SIZE)
-
-    print('\n Saving best model \n')
-    print(f'Best model saved at {best_epoch} epoch')
-
-    final_checkpoint = {'model':best_model.state_dict(), 'epoch':best_epoch}
-    torch.save(final_checkpoint,model_save_path+f'/BestModel__bs-({config.TRAIN_BATCH_SIZE})_threshold-({config.CLASS_THRESH})_weights-({config.BCE_WEIGHTS}).pt')
-
-
-
-
-
-
-
-
-
-
-
+    print(f"\nBest model saved to {save_path}\n")
