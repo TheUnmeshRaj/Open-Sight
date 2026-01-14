@@ -69,7 +69,7 @@ KERNEL_SIZE = 3
 # Training configuration
 ###################################################################
 
-DEVICE = "cpu"   # change to "cuda" if GPU available
+DEVICE = "cpu"  
 
 BCE_WEIGHTS = [1, 20]
 
