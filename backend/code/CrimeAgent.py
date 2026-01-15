@@ -22,9 +22,7 @@ class CrimeAgent(mesa.Agent):
         self.finalDecision = False 
     
     def move(self):
-        """
-        Function to make movement to the agent
-        """
+
         # get the neighbor cells
         possibleGrids = self.model.grid.get_neighborhood(
             self.pos,

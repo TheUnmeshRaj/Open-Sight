@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: opensight-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - BACKEND_PORT=5000
+      - BACKEND_DEBUG=False
+      - FLASK_ENV=production
+    volumes:
+      - ./backend:/app
+    networks:
+      - opensight-network
+
+  frontend:
+    build:
+      context: ./clientside
+      dockerfile: Dockerfile
+    container_name: opensight-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://backend:5000
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    depends_on:
+      - backend
+    networks:
+      - opensight-network
+
+networks:
+  opensight-network:
+    driver: bridge
