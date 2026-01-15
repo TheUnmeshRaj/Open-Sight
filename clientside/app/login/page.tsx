@@ -266,7 +266,7 @@ export default function LoginPage() {
             </form>
 
             <p className="mt-5 text-center text-[11px] text-slate-500">
-              By continuing, you agree to the OpenSight Terms and Privacy Policy.
+              By continuing, you agree to the OpenSight Terms and Privacy Policy
             </p>
           </div>
         </div>
