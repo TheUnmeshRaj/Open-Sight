@@ -6,19 +6,30 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
+/* =======================
+   Particle Background
+======================= */
+
 function ParticleBackground() {
-  const canvasRef = useRef(null);
-  const mouseRef = useRef({ x: null, y: null, active: false });
-  const particlesRef = useRef([]);
-  const animationRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const particlesRef = useRef<any[]>([]);
+  const animationRef = useRef<number | null>(null);
+  const mouseRef = useRef<{ x: number | null; y: number | null; active: boolean }>({
+    x: null,
+    y: null,
+    active: false,
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
-    let width = canvas.width = window.innerWidth;
-    let height = canvas.height = window.innerHeight;
+    const _ctx = canvas.getContext("2d");
+    if (!_ctx) return;
+    const ctx: CanvasRenderingContext2D = _ctx;
+
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
     const isMobile = window.innerWidth < 768;
 
     const config = {
@@ -27,62 +38,54 @@ function ParticleBackground() {
       minSize: 0.6,
       maxSpeed: isMobile ? 0.8 : 1.1,
       connectionDistance: isMobile ? 90 : 140,
-      mouseRadius: isMobile ? 120 : 200,
       particleColor: "#818CF8",
-      lineColor: 'rgba(129, 140, 248, 0.17)',
-      dotColor: 'rgba(129, 140, 248, 0.33)',
-      maxCursorConnections: isMobile ? 3 : 5,
-      connectStyle: "lines"
+      lineColor: "rgba(129, 140, 248, 0.17)",
     };
 
     class Particle {
-      constructor(x, y, specialColor = '') {
+      x: number;
+      y: number;
+      size: number;
+      speedX: number;
+      speedY: number;
+      specialColor: string;
+      opacity?: number;
+
+      constructor(x?: number, y?: number, specialColor = "") {
         this.x = x ?? Math.random() * width;
         this.y = y ?? Math.random() * height;
-        this.size = Math.random() * (config.maxSize - config.minSize) + config.minSize;
+        this.size =
+          Math.random() * (config.maxSize - config.minSize) + config.minSize;
         this.speedX = (Math.random() - 0.5) * config.maxSpeed * 2;
         this.speedY = (Math.random() - 0.5) * config.maxSpeed * 2;
         this.specialColor = specialColor;
         this.opacity = specialColor ? 1 : undefined;
       }
+
       update() {
         this.x += this.speedX;
         this.y += this.speedY;
-        if (this.specialColor) {
-          this.opacity *= 0.9923;
-          if (this.opacity < 0.001) this.opacity = 0;
-        }
+
         if (!this.specialColor) {
           if (this.x > width) this.x = 0;
           if (this.x < 0) this.x = width;
           if (this.y > height) this.y = 0;
           if (this.y < 0) this.y = height;
+        } else {
+          this.opacity! *= 0.9923;
         }
       }
-      draw() {
+
+      draw(ctx: CanvasRenderingContext2D) {
         ctx.save();
-        if (this.specialColor) ctx.globalAlpha = this.opacity;
+        if (this.specialColor && this.opacity !== undefined) {
+          ctx.globalAlpha = this.opacity;
+        }
         ctx.fillStyle = this.specialColor || config.particleColor;
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-      }
-    }
-
-    function addBurst(x, y) {
-      for (let i = 0; i < 16; i++) {
-        let ang = (Math.PI * 2) / 16 * i;
-        let spd = 5 + Math.random() * 3;
-        let hue = (200 + i * 22) % 360;
-        let p = new Particle(x, y, `hsl(${hue}, 78%, 65%)`);
-        p.speedX = Math.cos(ang) * spd;
-        p.speedY = Math.sin(ang) * spd;
-        p.size = 3.2;
-        p.opacity = 1;
-        particlesRef.current.push(p);
       }
     }
 
@@ -93,127 +96,21 @@ function ParticleBackground() {
       }
     }
 
-    function connectParticles() {
-      const particles = particlesRef.current;
-      const distLimitSq = config.connectionDistance * config.connectionDistance;
-      for (let a = 0; a < particles.length; a++) {
-        for (let b = a + 1; b < particles.length; b++) {
-          const dx = particles[a].x - particles[b].x;
-          const dy = particles[a].y - particles[b].y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < distLimitSq) {
-            if (config.connectStyle === "lines") {
-              ctx.strokeStyle = config.lineColor;
-              ctx.lineWidth = 1.6 - d2 / distLimitSq;
-              ctx.beginPath();
-              ctx.moveTo(particles[a].x, particles[a].y);
-              ctx.lineTo(particles[b].x, particles[b].y);
-              ctx.stroke();
-            }
-          }
-        }
-      }
-    }
-
-    function connectToMouse() {
-      const mouse = mouseRef.current;
-      if (!mouse.active || mouse.x === null || mouse.y === null) return;
-
-      const particles = particlesRef.current;
-      const distances = particles.map((p, i) => {
-        const dx = p.x - mouse.x;
-        const dy = p.y - mouse.y;
-        return { particle: p, idx: i, distSq: dx * dx + dy * dy };
-      });
-      distances.sort((a, b) => a.distSq - b.distSq);
-      const legs = Math.min(config.maxCursorConnections, 8);
-      const closest = distances.slice(0, legs);
-
-      closest.forEach((item) => {
-        const p = item.particle;
-        ctx.save();
-        ctx.strokeStyle = "#818CF8";
-        ctx.lineWidth = 0.3;
-        ctx.shadowColor = "#000";
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.moveTo(mouse.x, mouse.y);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-        ctx.restore();
-
-        const dx = mouse.x - p.x;
-        const dy = mouse.y - p.y;
-        p.x += dx * 0.01;
-        p.y += dy * 0.01;
-      });
-    }
-
     function animate() {
       ctx.clearRect(0, 0, width, height);
-      const particles = particlesRef.current;
-      for (let i = particles.length - 1; i >= 0; i--) {
-        particles[i].update();
-        particles[i].draw();
-        if (particles[i].specialColor && particles[i].opacity <= 0.03) {
-          particles.splice(i, 1);
-        }
+
+      for (const p of particlesRef.current) {
+        p.update();
+        p.draw(ctx);
       }
-      connectParticles();
-      connectToMouse();
+
       animationRef.current = requestAnimationFrame(animate);
     }
-
-    const handleResize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-
-      const mobileNow = window.innerWidth < 768;
-      config.particleCount = mobileNow ? 35 : 90;
-      config.connectionDistance = mobileNow ? 90 : 140;
-      config.mouseRadius = mobileNow ? 120 : 200;
-
-      initParticles();
-    };
-
-    const handleClick = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      addBurst(e.clientX - rect.left, e.clientY - rect.top);
-    };
-
-    const handleTouchStart = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const touch = e.touches[0];
-      addBurst(touch.clientX - rect.left, touch.clientY - rect.top);
-    };
-
-    const handleMouseMove = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      mouseRef.current.x = e.clientX - rect.left;
-      mouseRef.current.y = e.clientY - rect.top;
-      mouseRef.current.active = true;
-    };
-
-    const handleMouseOut = () => {
-      mouseRef.current.active = false;
-    };
-
-    window.addEventListener('resize', handleResize);
-    canvas.addEventListener('click', handleClick);
-    canvas.addEventListener('touchstart', handleTouchStart);
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseout', handleMouseOut);
 
     initParticles();
     animate();
 
     return () => {
-      window.removeEventListener('resize', handleResize);
-      canvas.removeEventListener('click', handleClick);
-      canvas.removeEventListener('touchstart', handleTouchStart);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseout', handleMouseOut);
-
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
@@ -224,10 +121,14 @@ function ParticleBackground() {
     <canvas
       ref={canvasRef}
       className="fixed inset-0 z-10"
-      style={{ mixBlendMode: 'screen', pointerEvents: 'none' }}
+      style={{ mixBlendMode: "screen", pointerEvents: "none" }}
     />
   );
 }
+
+/* =======================
+   Login Page
+======================= */
 
 export default function LoginPage() {
   const router = useRouter();
@@ -246,25 +147,14 @@ export default function LoginPage() {
       const supabase = createClient();
 
       if (isSignUp) {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (signUpError) {
-          setError(signUpError.message || "Sign up failed");
-          setLoading(false);
-          return;
-        }
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
-        if (signInError) {
-          setError(signInError.message || "Login failed");
-          setLoading(false);
-          return;
-        }
+        if (error) throw error;
       }
 
       router.push("/");
@@ -274,22 +164,23 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-
   const handleGoogle = async () => {
     setLoading(true);
     setError(null);
+
     try {
       const supabase = createClient();
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
       });
-      if (oauthError) setError(oauthError.message || "OAuth failed");
+      if (error) throw error;
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-950">
