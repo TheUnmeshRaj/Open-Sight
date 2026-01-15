@@ -25,7 +25,7 @@ export default function Pred() {
         data-width="80%"
       >
         <a href="https://tenor.com/view/why-are-you-gae-meme-gae-gif-21746558">
-        </a>
+        .</a>
       </div>
       </div>
 
