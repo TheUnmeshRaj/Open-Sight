@@ -104,7 +104,9 @@ const NavBar: React.FC<NavBarProps> = ({ user }) => {
                 <p className="text-sm text-slate-300">{user.email}</p>
               </div>
               <div className="relative">
-                <button
+                <button 
+                type="button"
+                aria-label="Toggle mobile menu"
                   onClick={() => setShowMenu(!showMenu)}
                   className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
                 >
@@ -138,7 +140,11 @@ const NavBar: React.FC<NavBarProps> = ({ user }) => {
           ) : null}
 
           {/* Mobile menu button */}
-          <button className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+          <button
+            type="button"
+            aria-label="Toggle mobile menu"
+            className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors"
+          >
             <svg
               className="w-5 h-5 text-white"
               fill="none"

@@ -25,7 +25,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - BACKEND_URL=http://backend:5000
+      - BACKEND_URL=http://${NEXT_PUBLIC_API_URL}:${BACKEND_PORT}
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     depends_on:
