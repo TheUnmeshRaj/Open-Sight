@@ -8,6 +8,7 @@ import ControlPanel from "@/app/components/ControlPanel";
 import Statistics from "@/app/components/Statistics";
 import NavBar from "@/app/components/NavBar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { User } from "@supabase/supabase-js/dist/index.cjs";
 
 // Dynamically import the map component to avoid SSR issues
 const HotspotMap = dynamic(() => import("@/app/components/HotspotMap"), {
@@ -37,7 +38,7 @@ interface Stats {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [city, setCity] = useState("bangalore");
