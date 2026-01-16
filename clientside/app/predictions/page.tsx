@@ -27,7 +27,7 @@ export default function Pred() {
         data-width="80%"
       >
         <a href="https://open-sight-rrl7mbsafpyuu7yvoh6ucx.streamlit.app">
-          Tenor GIF
+          
         </a>
       </div>
     </div>
