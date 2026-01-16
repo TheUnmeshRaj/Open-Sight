@@ -9,6 +9,7 @@ import Statistics from "@/app/components/Statistics";
 import NavBar from "@/app/components/NavBar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import { User } from "@supabase/supabase-js/dist/index.cjs";
+import { UserDashboard } from "@/app/components/UserDashboard";
 
 // Dynamically import the map component to avoid SSR issues
 const HotspotMap = dynamic(() => import("@/app/components/HotspotMap"), {
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [showProfile, setShowProfile] = useState(false);
   const [city, setCity] = useState("bangalore");
   const [threshold, setThreshold] = useState(0.5);
   const [timeWindow, setTimeWindow] = useState("current");
@@ -159,6 +161,16 @@ export default function DashboardPage() {
     );
   }
 
+  // Show profile dashboard if user clicks My Profile
+  if (showProfile && user) {
+    return (
+      <div>
+        <NavBar user={user as any} onProfileClose={() => setShowProfile(false)} />
+        <UserDashboard authUser={user} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50 relative overflow-hidden">
       {/* Subtle animated background elements */}
@@ -166,7 +178,7 @@ export default function DashboardPage() {
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
       
       {/* Navigation */}
-      <NavBar user={user as any} />
+      <NavBar user={user as any} onProfileOpen={() => setShowProfile(true)} />
 
       {/* Main Content */}
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

@@ -1,20 +1,42 @@
 "use client";
 
-import React from "react";
-import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { useState } from "react";
+import { getUserProfile, getUserAvatarUrl } from "@/lib/supabase/database";
 
 interface NavBarProps {
-  user?: { email: string };
+  user?: { email: string; id?: string };
+  onProfileOpen?: () => void;
+  onProfileClose?: () => void;
 }
 
-const NavBar: React.FC<NavBarProps> = ({ user }) => {
+const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) => {
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.id) return;
+      try {
+        const profile = await getUserProfile(user.id);
+        if (profile?.full_name) {
+          setFullName(profile.full_name);
+        }
+        const avatar = getUserAvatarUrl(user.id);
+        setAvatarUrl(avatar);
+      } catch (error) {
+        console.error("Failed to fetch profile:", error);
+      }
+    };
+
+    fetchProfile();
+  }, [user?.id]);
 
   const handleSignout = async () => {
     setLoading(true);
@@ -30,6 +52,21 @@ const NavBar: React.FC<NavBarProps> = ({ user }) => {
     }
   };
 
+  const handleMyProfile = () => {
+    setShowMenu(false);
+    onProfileOpen?.();
+  };
+
+  const getInitials = (name: string) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map(n => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   const isActive = (path: string) => pathname === path;
 
   return (
@@ -41,25 +78,20 @@ const NavBar: React.FC<NavBarProps> = ({ user }) => {
             <Link href="/" className="flex items-center gap-2 group">
               <div className="w-10 h-10 bg-linear-to-br from-emerald-400 to-emerald-600 rounded-lg flex items-center justify-center shadow-lg group-hover:shadow-emerald-500/50 transition-shadow">
                 <svg
-                  className="w-6 h-6 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                  />
-                </svg>
+                      className="h-6 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                      />
+                    </svg>
               </div>
-              <div>
-                <h1 className="text-xl font-bold bg-linear-to-r from-emerald-300 to-emerald-500 bg-clip-text text-transparent">
-                  OpenSight
-                </h1>
-                <p className="text-xs text-slate-400">Crime Analytics</p>
-              </div>
+              <span className="text-white font-bold hidden sm:inline">OpenSight</span>
             </Link>
           </div>
 
@@ -95,42 +127,112 @@ const NavBar: React.FC<NavBarProps> = ({ user }) => {
             >
               Analytics
             </Link>
+            <Link
+              href="/report"
+              className={`text-sm font-medium transition-all duration-300 ${
+                isActive("/report")
+                  ? "text-emerald-400 border-b-2 border-emerald-400 pb-1"
+                  : "text-slate-300 hover:text-white"
+              }`}
+            >
+              Report
+            </Link>
           </div>
 
           {/* User Section */}
           {user ? (
             <div className="flex items-center gap-4">
-              <div className="hidden sm:block">
-                <p className="text-sm text-slate-300">{user.email}</p>
-              </div>
               <div className="relative">
-                <button 
-                type="button"
-                aria-label="Toggle mobile menu"
+                <button
                   onClick={() => setShowMenu(!showMenu)}
-                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all duration-300 text-white text-sm font-medium group"
                 >
+                  {/* Avatar */}
+                  <div className="relative w-8 h-8 rounded-full overflow-hidden border-2 border-emerald-400/30 group-hover:border-emerald-400 transition-all">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt={fullName || "Avatar"}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                          e.currentTarget.nextElementSibling?.classList.remove("hidden");
+                        }}
+                      />
+                    ) : null}
+                    <div className="hidden w-full h-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white text-xs font-bold">
+                      {getInitials(fullName)}
+                    </div>
+                  </div>
+
+                  <div className="hidden sm:flex flex-col items-start">
+                    <span className="text-xs font-semibold text-emerald-300">
+                      {fullName?.split(" ")[0] || "User"}
+                    </span>
+                 
+                  </div>
+
                   <svg
-                    className="w-5 h-5 text-white"
+                    className={`w-4 h-4 transition-transform duration-300 ${
+                      showMenu ? "rotate-180" : ""
+                    }`}
                     fill="currentColor"
                     viewBox="0 0 20 20"
                   >
-                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
                     <path
                       fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm0-2a6 6 0 100-12 6 6 0 000 12z"
-                      clipRule="evenodd"
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
                     />
                   </svg>
                 </button>
 
                 {showMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-slate-800 border border-white/10 rounded-lg shadow-lg animate-in fade-in zoom-in-95 duration-200">
+                  <div className="absolute right-0 mt-2 w-56 bg-slate-800 border border-white/10 rounded-lg shadow-xl overflow-hidden">
+                    {/* Profile Header */}
+                    <div className="px-4 py-3 bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border-b border-white/5">
+                      <p className="text-sm font-semibold text-white">{fullName || "User"}</p>
+                      <p className="text-xs text-slate-400">{user.email}</p>
+                    </div>
+
+                    {/* Menu Items */}
+                    <button
+                      onClick={handleMyProfile}
+                      className="block w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center gap-2"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                        />
+                      </svg>
+                      My Profile
+                    </button>
+
                     <button
                       onClick={handleSignout}
                       disabled={loading}
-                      className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors rounded-lg border-t border-white/5"
+                      className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors border-t border-white/5 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                        />
+                      </svg>
                       {loading ? "Signing out..." : "Sign Out"}
                     </button>
                   </div>

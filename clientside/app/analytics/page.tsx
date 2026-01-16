@@ -8,17 +8,15 @@ export default function Pred() {
     script.async = true;
     document.body.appendChild(script);
 
-    return () => script.remove();
+    return () => {
+      document.body.removeChild(script);
+    };
   }, []);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        width: "100%",
-      }}
-    >
+    <>
+    <div style={{ display: "flex", justifyContent: "center" }}>
+
       <div
         className="tenor-gif-embed"
         data-postid="21746558"
@@ -27,9 +25,10 @@ export default function Pred() {
         data-width="80%"
       >
         <a href="https://tenor.com/view/why-are-you-gae-meme-gae-gif-21746558">
-          Tenor GIF
-        </a>
+        .</a>
       </div>
-    </div>
+      </div>
+
+    </>
   );
 }
