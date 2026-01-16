@@ -12,6 +12,8 @@ __pycache__/
 venv/
 env/
 
+ModelWeights/
+Datasets/
 docs/
 
 # Build outputs
