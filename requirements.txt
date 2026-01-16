@@ -1,8 +1,8 @@
 streamlit
 torch
 pandas
-numpy<2.0.0
-scikit-learn==1.3.0
+numpy
+scikit-learn
 pydeck
 geopy
 streamlit-folium
