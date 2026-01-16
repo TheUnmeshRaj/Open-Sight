@@ -13,3 +13,4 @@ tensorboardX
 folium
 matplotlib
 statsmodels
+h5py
