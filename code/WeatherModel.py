@@ -75,6 +75,9 @@ class WeatherModel():
         # get total crime count each day with all kinds of crime type
         data = pd.concat([weather_data, crimeData], axis=1)
         
+        # Fill missing values immediately (e.g. if weather data is missing for crime dates)
+        data = data.fillna(0)
+        
         # change temperature degree to celsius
         data['F'] = (data['temp'] * 1.8) + 32
 
@@ -86,11 +89,22 @@ class WeatherModel():
         data = data.drop(columns=drop_columns, axis=1)
         data = data.astype(np.float64)
         
+        # Fill missing values (crucial if crime dates don't match weather file dates)
+        data = data.fillna(0)
+        
         # get features and labels where labels are total crime count each day for all crime type
         crimeType = [crime.lower() for crime in config.CRIME_TYPE]
         y = data[crimeType].sum(axis=1)
         x = data.drop(columns=crimeType)
         
+        # Final robust cleaning for NaNs and Infinite values
+        x = x.replace([np.inf, -np.inf], np.nan).fillna(0)
+        y = y.replace([np.inf, -np.inf], np.nan).fillna(0)
+        
+        # Ensure numeric types
+        x = x.apply(pd.to_numeric, errors='coerce').fillna(0)
+        y = pd.to_numeric(y, errors='coerce').fillna(0)
+
         x.to_csv(self.weatherFeatures)
         y.to_csv(self.weatherLabels)
         

@@ -16,12 +16,25 @@ from datetime import datetime, timedelta
 from streamlit_folium import folium_static
 from geopandas import GeoDataFrame
 from shapely.geometry import Point
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut
 
 import config
 from LSTMModel import ConvLSTMModel
 from DataPreprocessing import DataPreprocessing
 from WeatherModel import WeatherModel
 from TimeseriesModel import TimeseriesModel
+
+@st.cache_data
+def get_location_coordinates(place_name):
+    try:
+        geolocator = Nominatim(user_agent="crime_hotspot_app")
+        location = geolocator.geocode(f"{place_name}, Bengaluru, India")
+        if location:
+            return location.latitude, location.longitude
+    except:
+        return None
+    return None
 
 device = 'cpu'
 projectDir = config.PROJECT_DIR
@@ -47,30 +60,10 @@ def loadNYCShape():
             NYCShape = pickle.load(file)
             return NYCShape
 
-    else:
-        # Get the shape-file for NYC
-        boros = GeoDataFrame.from_file(projectDir + '/Data/ShapeBorough/geo_export_21e663f4-eeca-4db4-a956-0f0928ed3b37.shp')
-        
-        NYCShape = []
-        x_list = np.linspace(start=0, stop=config.LAT_GRIDS-1, num=config.LAT_GRIDS).astype('int')
-        y_list = np.linspace(start=0, stop=config.LON_GRIDS-1, num=config.LON_GRIDS).astype('int')
-
-        print("Generating NYC map...")
-
-        for x in x_list:
-            for y in y_list:
-                # convert grid number to latitude and longitude
-                lat, lon = config.grid2coord(x,y)
-                point = Point(lon, lat)
-                # determine if current point is in any shape of NYC
-                in_NYC_or_Not = np.array([point.within(shape) for shape in boros.geometry]).sum(axis=0)
-
-                if not in_NYC_or_Not:
-                    NYCShape.append((x,y))
-
-        with open(NYCShapeDir, 'wb') as file:
-            pickle.dump(NYCShape, file)
-
+    # For custom datasets (like Bengaluru), we don't use the NYC shapefile filtering.
+    # Return empty list means "no grids are excluded".
+    print("Skipping NYC Map shape filtering for custom dataset.")
+    NYCShape = []
     return NYCShape
 
 @st.cache_data
@@ -96,7 +89,8 @@ def loadLSTMModel():
     Output: LSTM_model<Object>: loaded ConvLSTM model
     """
     print('Loading ConvLSTM Model')
-    model_save_path = projectDir + '/Data/ModelWeights' + f'/BestModel__bs-({config.TRAIN_BATCH_SIZE})_threshold-({config.CLASS_THRESH})_weights-({config.BCE_WEIGHTS}).pt'
+    # model_save_path = projectDir + '/Data/ModelWeights' + f'/BestModel__bs-({config.TRAIN_BATCH_SIZE})_threshold-({config.CLASS_THRESH})_weights-({config.BCE_WEIGHTS}).pt'
+    model_save_path = projectDir + '/Data/ModelWeights/BestModel.pt'
     model = torch.load(model_save_path, map_location=torch.device(device) )
     LSTM_model = ConvLSTMModel(input_dim=config.CRIME_TYPE_NUM, hidden_dim=config.HIDDEN_DIM, kernel_size=config.KERNEL_SIZE, bias=True)
     LSTM_model.load_state_dict(model['model'])
@@ -229,67 +223,169 @@ def run():
     startDate  = datetime.strptime(config.START_SELECT_DATE[1:-1], '%Y-%m-%d')
     endDate    = datetime.strptime(config.END_DATE[1:-1], '%Y-%m-%d')
     
-    # Input parameters in the sidebar
+    # Initialize session state for map view
+    if 'view_lat' not in st.session_state:
+        st.session_state['view_lat'] = (config.LAT_MIN + config.LAT_MAX) / 2
+        st.session_state['view_lon'] = (config.LON_MIN + config.LON_MAX) / 2
+        st.session_state['view_zoom'] = 10
+
     with st.sidebar:
-        st.sidebar.write("Choose Parameters for Prediction")
-        with st.form("my_form"):
-            # select data in the given range
-            dateChosen = st.date_input("Choose date:",  min_value=startDate, max_value=endDate, value=startDate)
-            dataChosenStr = dateChosen.strftime('%Y-%m-%d')
-            inputDate = f"\'{dataChosenStr}\'"
+        st.write("## Mode Selection")
+        app_mode = st.radio("Choose Mode:", ["Prediction Model", "Cumulative Heatmap (All Data)"])
+        st.write("---")
+        
+        st.write("## 🔍 Search Location")
+        search_query = st.text_input("Enter place name (e.g. Indiranagar)")
+        if search_query:
+            coords = get_location_coordinates(search_query)
+            if coords:
+                lat, lon = coords
+                st.session_state['view_lat'] = lat
+                st.session_state['view_lon'] = lon
+                st.session_state['view_zoom'] = 14
+                st.success(f"Found: {search_query}")
+            else:
+                st.error("Location not found in Bengaluru")
+        st.write("---")
 
-            # select one of eight crime type
-            typeChosen = st.radio("Select crime type:", crimeType)
-            type_num = crimeType.index(typeChosen)
+        # Visualization Style
+        st.write("## 🎨 Map Style")
+        vis_type = st.radio("Choose Style:", ["Heatmap (2D)", "Hexagon (3D)"])
+        st.write("---")
 
-            # select threshold for prediction
-            threshold = st.select_slider("Adjust threshold:", options=[i/100 for i in range(1,100)])
-            # button for start processing prediction
-            submitted = st.form_submit_button("Predict")
-    # default map when initializing
-    if not submitted:
-        st.write()
-        "👈 👈 👈 Please choose parameters for prediction"
-        st.pydeck_chart(pdk.Deck(
-            map_style=None,
-            initial_view_state=pdk.ViewState(
-                longitude = (config.LON_MIN+config.LON_MAX)/2,
-                latitude = (config.LAT_MIN+config.LAT_MAX)/2,
-                zoom=10,
-                pitch=50,
-            ),
-            layers=[]
-        ))
+    if app_mode == "Prediction Model":
+        # Input parameters in the sidebar
+        with st.sidebar:
+            st.sidebar.write("Choose Parameters for Prediction")
+            with st.form("my_form"):
+                # select data in the given range
+                dateChosen = st.date_input("Choose date:",  min_value=startDate, max_value=endDate, value=startDate)
+                dataChosenStr = dateChosen.strftime('%Y-%m-%d')
+                inputDate = f"\'{dataChosenStr}\'"
 
-    # plot 3d interactive map by using pydeck_chart
-    if submitted:
-        st.write()
-        # show selected parameters
-        'You selected: ', typeChosen, 'on date ', dateChosen, 'with threshold of ', threshold
-        'Prediction Results: '
-        pred_data, real_data, getWeatherFactor, getTimeseriesFactor = getPredDataByDate(inputDate, LSTMModel, weatherModel, timeseriesModel, dataPivot, features, labels)
-        chart_data = getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold)
-        st.pydeck_chart(pdk.Deck(
-            map_style=None,
-            initial_view_state=pdk.ViewState(
-                longitude = (config.LON_MIN+config.LON_MAX)/2,
-                latitude = (config.LAT_MIN+config.LAT_MAX)/2,
-                zoom=10,
-                pitch=40,
-            ),
-            layers=[
-                pdk.Layer(
+                # select one of eight crime type
+                typeChosen = st.radio("Select crime type:", crimeType)
+                type_num = crimeType.index(typeChosen)
+
+                # select threshold for prediction
+                threshold = st.select_slider("Adjust threshold:", options=[i/100 for i in range(1,100)])
+                # button for start processing prediction
+                submitted = st.form_submit_button("Predict")
+        
+        # default map when initializing
+        if not submitted:
+            st.write()
+            "👈 👈 👈 Please choose parameters for prediction"
+            st.pydeck_chart(pdk.Deck(
+                map_style=None,
+                initial_view_state=pdk.ViewState(
+                    longitude = st.session_state['view_lon'],
+                    latitude = st.session_state['view_lat'],
+                    zoom = st.session_state['view_zoom'],
+                    pitch=50,
+                ),
+                layers=[]
+            ))
+
+        # plot 3d interactive map by using pydeck_chart
+        if submitted:
+            st.write()
+            # show selected parameters
+            'You selected: ', typeChosen, 'on date ', dateChosen, 'with threshold of ', threshold
+            'Prediction Results: '
+            pred_data, real_data, getWeatherFactor, getTimeseriesFactor = getPredDataByDate(inputDate, LSTMModel, weatherModel, timeseriesModel, dataPivot, features, labels)
+            chart_data = getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold)
+            if vis_type == "Hexagon (3D)":
+                layer = pdk.Layer(
+                    'HexagonLayer',
+                    data=chart_data,
+                    get_position='[lon, lat]',
+                    radius=400,
+                    elevation_scale=1,
+                    elevation_range=[0, 8000],
+                    auto_highlight=True,
+                    pickable=True,
+                    extruded=True,
+                    opacity=0.6,
+                )
+            else:
+                layer = pdk.Layer(
+                    'HeatmapLayer',
+                    data=chart_data,
+                    get_position='[lon, lat]',
+                    opacity=0.9,
+                    radiusPixels=50,
+                )
+
+            st.pydeck_chart(pdk.Deck(
+                map_style=None,
+                initial_view_state=pdk.ViewState(
+                    longitude = st.session_state['view_lon'],
+                    latitude = st.session_state['view_lat'],
+                    zoom = st.session_state['view_zoom'],
+                    pitch=40 if vis_type == "Hexagon (3D)" else 0,
+                ),
+                layers=[layer],
+            ))
+
+    elif app_mode == "Cumulative Heatmap (All Data)":
+        st.write("## 🗺️ Cumulative Crime Heatmap")
+        
+        # Get unique crime types from the dataset
+        all_crime_types = sorted(crimeData['TYPE'].unique().tolist())
+        
+        with st.sidebar:
+            st.write("## 🕸️ Filter Data")
+            selected_types = st.multiselect(
+                "Select Crime Types:",
+                options=all_crime_types,
+                default=all_crime_types
+            )
+            st.write("---")
+
+        st.write(f"Displaying {len(selected_types)} crime types within configured bounds.")
+        
+        # Filter raw data based on config bounds AND selected types
+        df_display = crimeData[
+            (crimeData['Longitude'] >= config.LON_MIN) & (crimeData['Longitude'] <= config.LON_MAX) &
+            (crimeData['Latitude'] >= config.LAT_MIN) & (crimeData['Latitude'] <= config.LAT_MAX) &
+            (crimeData['TYPE'].isin(selected_types))
+        ]
+        
+        st.write(f"**Total Points Displayed:** {len(df_display)}")
+
+        if vis_type == "Hexagon (3D)":
+            layer = pdk.Layer(
                 'HexagonLayer',
-                data=chart_data,
-                get_position='[lon, lat]',
-                radius=400,
-                elevation_scale=1,
-                elevation_range=[0, 8000],
-                auto_highlight = True,
+                data=df_display,
+                get_position='[Longitude, Latitude]',
+                radius=200,
+                elevation_scale=4,
+                elevation_range=[0, 3000],
+                auto_highlight=True,
                 pickable=True,
                 extruded=True,
-                )
-            ],
+                coverage=1,
+                opacity=0.6
+            )
+        else:
+            layer = pdk.Layer(
+                'HeatmapLayer',
+                data=df_display,
+                get_position='[Longitude, Latitude]',
+                opacity=0.9,
+                radiusPixels=30,
+            )
+
+        st.pydeck_chart(pdk.Deck(
+            map_style=None,
+            initial_view_state=pdk.ViewState(
+                longitude = st.session_state['view_lon'],
+                latitude = st.session_state['view_lat'],
+                zoom = st.session_state['view_zoom'],
+                pitch=40 if vis_type == "Hexagon (3D)" else 0,
+            ),
+            layers=[layer],
         ))
 
 if __name__ == "__main__":

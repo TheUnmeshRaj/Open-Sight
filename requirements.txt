@@ -137,3 +137,4 @@ websockets==11.0.3
 Werkzeug==2.3.7
 widgetsnbextension==4.0.8
 zipp==3.16.2
+geopy>=2.4.1

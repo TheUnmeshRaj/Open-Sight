@@ -12,7 +12,7 @@ class DataPreprocessing:
         self.projectDir = projectDir
         self.datasetDir = (
             self.projectDir
-            + "/Data/Datasets/20230320020226crime_data_extended_entries.csv"
+            + "/Data/Datasets/" + config.DATASET_FILENAME
         )
 
         self.data = self.readDataset()

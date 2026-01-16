@@ -12,14 +12,17 @@ PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # Single aggregated crime channel
 CRIME_TYPE = ["crime"]
 CRIME_TYPE_NUM = 1
+# Dataset filename (must be in Data/Datasets/)
+DATASET_FILENAME = "bengaluru_crime_post_2019_full.csv"
 
 # -------- CHANGE THESE TO MATCH YOUR CITY --------
 # Set bounds based on your dataset min/max
-# Bengaluru bounding box
-LAT_MIN = 12.80
-LAT_MAX = 13.15
-LON_MIN = 77.45
-LON_MAX = 77.80
+# Bengaluru bounding box (Updated for 'bengaluru_crime_post_2019_full.csv')
+# Note: Data contains points from 11.0-14.8, but we focus on Metro area for resolution.
+LAT_MIN = 12.70
+LAT_MAX = 13.30
+LON_MIN = 77.30
+LON_MAX = 78.00
 # ------------------------------------------------
 
 # Grid resolution
@@ -42,6 +45,9 @@ VAL_TEST_DATE = "'2025-01-01'"
 
 LAT_BINS = np.linspace(start=LAT_MIN, stop=LAT_MAX, num=LAT_GRIDS + 1)
 LON_BINS = np.linspace(start=LON_MIN, stop=LON_MAX, num=LON_GRIDS + 1)
+
+DIFF_LAT = (LAT_MAX - LAT_MIN) / LAT_GRIDS
+DIFF_LON = (LON_MAX - LON_MIN) / LON_GRIDS
 
 def coord2grid(lats, longs):
     cell_x = np.digitize(lats, LAT_BINS, right=True)
@@ -81,5 +87,5 @@ N_EPOCHS = 5
 SAVE = True
 MODEL_SAVE_PATH = PROJECT_DIR + "/Data/ModelWeights"
 
-CLASS_THRESH = 0.5
+CLASS_THRESH = 0.6
 MULTIPLY_FACTOR = 0.3
