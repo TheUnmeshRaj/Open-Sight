@@ -14,8 +14,6 @@ warnings.filterwarnings("ignore")
 from tqdm import tqdm
 from datetime import datetime, timedelta
 from streamlit_folium import folium_static
-from geopandas import GeoDataFrame
-from shapely.geometry import Point
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 
