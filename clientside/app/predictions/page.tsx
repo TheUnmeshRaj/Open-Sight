@@ -13,7 +13,7 @@ export default function Predictions() {
         <Card className="w-full h-[85vh] overflow-hidden border-2 shadow-lg rounded-xl">
             {}
             <iframe 
-                src="https://open-sight-rrl7mbsafpyuu7yvoh6ucx.streamlit.app?embed=true"
+                src="https://open-sight-devfhv2feew6osfp4fm8ib.streamlit.app?embed=true"
                 width="100%"
                 height="100%"
                 frameBorder="0"
