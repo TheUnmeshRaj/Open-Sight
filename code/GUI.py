@@ -114,7 +114,7 @@ def loadTimeseriesModel(crimeData):
     print('Loading Timeseries Model')
     return TimeseriesModel(projectDir, crimeData)
 
-def getPredDataByDate(date, LSTMModel, weatherModel, timeseriesModel, dataPivot, features, labels):
+def getPredDataByDate(date, LSTMModel, timeseriesModel, dataPivot, features, labels):
     """
     Function to get predicted data by using those three models
 
@@ -308,7 +308,7 @@ def run():
             # show selected parameters
             'You selected: ', typeChosen, 'on date ', dateChosen, 'with threshold of ', threshold
             'Prediction Results: '
-            pred_data, real_data, getWeatherFactor, getTimeseriesFactor = getPredDataByDate(inputDate, LSTMModel, weatherModel, timeseriesModel, dataPivot, features, labels)
+            pred_data, real_data, getWeatherFactor, getTimeseriesFactor = getPredDataByDate(inputDate, LSTMModel, timeseriesModel, dataPivot, features, labels)
             chart_data = getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold)
             if vis_type == "Hexagon (3D)":
                 layer = pdk.Layer(
