@@ -199,7 +199,8 @@ def getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, t
                 if temporal_factor:
                     weight = weight * getWeatherFactor * getTimeseriesFactor[type_num]
                 if pred_data[type_num][x][y] < threshold:
-                    weight = weight * config.MULTIPLY_FACTOR
+                    weight = 0  # Hard cutoff - hide predictions below confidence threshold
+                #    weight = weight * config.MULTIPLY_FACTOR
                     
                 lat = config.LAT_BINS[x] + config.DIFF_LAT
                 lon = config.LON_BINS[y] + config.DIFF_LON
