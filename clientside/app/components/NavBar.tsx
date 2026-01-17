@@ -19,6 +19,8 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
   const [showMenu, setShowMenu] = useState(false);
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [currentTime, setCurrentTime] = useState("");
+  const [currentDate, setCurrentDate] = useState("");
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -37,6 +39,18 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
 
     fetchProfile();
   }, [user?.id]);
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setCurrentDate(now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
+    };
+
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSignout = async () => {
     setLoading(true);
@@ -139,7 +153,20 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
             </Link>
           </div>
 
-          {/* User Section */}
+          {/* Live Clock & User Section */}
+          <div className="flex items-center gap-4">
+            {/* Real-time Clock (Desktop) */}
+            <div className="hidden lg:flex items-center gap-4">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-lg">
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                LIVE
+              </div>
+              <div className="text-slate-300 text-sm">
+                <div className="font-mono font-semibold">{currentTime}</div>
+                <div className="text-xs text-slate-400">{currentDate}</div>
+              </div>
+            </div>
+
           {user ? (
             <div className="flex items-center gap-4">
               <div className="relative">
@@ -160,7 +187,7 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
                         }}
                       />
                     ) : null}
-                    <div className="hidden w-full h-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white text-xs font-bold">
+                    <div className="w-full h-full bg-linear-to-br from-emerald-400 to-emerald-600 items-center justify-center text-white text-xs font-bold" style={{ display: 'none' }}>
                       {getInitials(fullName)}
                     </div>
                   </div>
@@ -197,7 +224,7 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
                     {/* Menu Items */}
                     <button
                       onClick={handleMyProfile}
-                      className="block w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center gap-2"
+                      className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center gap-2"
                     >
                       <svg
                         className="w-4 h-4"
@@ -240,6 +267,7 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
               </div>
             </div>
           ) : null}
+          </div>
 
           {/* Mobile menu button */}
           <button

@@ -57,6 +57,17 @@
     @apply ring-2 ring-emerald-400/50 outline-none;
   }
 
+  /* Darker placeholder text for better visibility */
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-slate-500 opacity-100;
+  }
+
+  input:focus::placeholder,
+  textarea:focus::placeholder {
+    @apply text-slate-400;
+  }
+
   /* Responsive headings */
   @media (max-width: 640px) {
     h1 {
@@ -316,6 +327,33 @@
 
   .badge-low {
     @apply bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-semibold;
+  }
+
+  /* Animation keyframes */
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-20px) rotate(5deg);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s infinite;
   }
 }
 

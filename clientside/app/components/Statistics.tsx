@@ -34,6 +34,8 @@ const Statistics: React.FC<StatisticsProps> = ({
     unit,
     gradient,
     delay,
+    trend,
+    trendLabel,
   }: {
     icon: React.ReactNode;
     label: string;
@@ -41,6 +43,8 @@ const Statistics: React.FC<StatisticsProps> = ({
     unit?: string;
     gradient: string;
     delay: number;
+    trend?: { direction: 'up' | 'down'; percentage: number; label: string };
+    trendLabel?: string;
   }) => (
     <div
       className={`bg-white rounded-2xl shadow-xl border border-slate-200 p-6 hover:shadow-2xl transition-all duration-500 transform hover:scale-105 hover:-translate-y-1 animate-fade-in cursor-pointer group`}
@@ -57,6 +61,14 @@ const Statistics: React.FC<StatisticsProps> = ({
         <p className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">{value}</p>
         {unit && <p className="text-sm text-slate-500 font-semibold">{unit}</p>}
       </div>
+      {trend && (
+        <div className="mt-3 flex items-center gap-2 text-xs">
+          <span className={`flex items-center gap-1 font-bold ${trend.direction === 'up' ? 'text-green-600' : 'text-red-600'}`}>
+            {trend.direction === 'up' ? '↑' : '↓'} {trend.percentage}%
+          </span>
+          <span className="text-slate-500">{trend.label}</span>
+        </div>
+      )}
       <div className="mt-3 h-1 bg-slate-100 rounded-full overflow-hidden">
         <div className={`h-full ${gradient} rounded-full animate-shimmer`} style={{ width: '70%' }} />
       </div>
@@ -78,6 +90,7 @@ const Statistics: React.FC<StatisticsProps> = ({
           unit="areas"
           gradient="bg-gradient-to-br from-red-500 to-red-600"
           delay={0}
+          trend={{ direction: 'down', percentage: 12, label: 'from last week' }}
         />
 
         <StatCard
@@ -91,6 +104,7 @@ const Statistics: React.FC<StatisticsProps> = ({
           unit="reported"
           gradient="bg-gradient-to-br from-yellow-500 to-yellow-600"
           delay={100}
+          trend={{ direction: 'down', percentage: 8, label: 'from yesterday' }}
         />
 
         <StatCard
@@ -104,6 +118,7 @@ const Statistics: React.FC<StatisticsProps> = ({
           unit="/10"
           gradient="bg-gradient-to-br from-blue-500 to-blue-600"
           delay={200}
+          trend={{ direction: 'down', percentage: 22, label: 'improvement' }}
         />
 
         <StatCard
@@ -117,6 +132,7 @@ const Statistics: React.FC<StatisticsProps> = ({
           unit="%"
           gradient="bg-gradient-to-br from-green-500 to-green-600"
           delay={300}
+          trend={{ direction: 'up', percentage: 15, label: 'from yesterday' }}
         />
       </div>
 

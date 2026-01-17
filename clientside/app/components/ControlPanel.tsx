@@ -35,7 +35,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             value={city}
             onChange={(e) => onCityChange(e.target.value)}
             aria-label="City Selection"
-            className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all hover:border-emerald-300 shadow-sm cursor-pointer"
+            className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl bg-slate-50 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all hover:border-emerald-300 hover:bg-slate-100 shadow-sm cursor-pointer"
           >
             <option value="bangalore">🇮🇳 Bangalore</option>
             <option value="delhi">🇮🇳 Delhi</option>
@@ -71,7 +71,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           <select
             value={timeWindow}
             onChange={(e) => onTimeWindowChange(e.target.value)}
-            className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all hover:border-emerald-300 shadow-sm cursor-pointer"
+            className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl bg-slate-50 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all hover:border-emerald-300 hover:bg-slate-100 shadow-sm cursor-pointer"
           >
             <option value="current">📅 Current</option>
             <option value="week">📅 This Week</option>
