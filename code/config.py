@@ -35,7 +35,7 @@ SEQ_LEN = 12
 # Dates (used only for slicing, not strict)
 START_DATE = "'2019-01-01'"
 START_SELECT_DATE = "'2019-02-01'"
-END_DATE = "'2025-12-31'"
+END_DATE = "'2030-12-31'"
 TRAIN_VAL_DATE = "'2024-01-01'"
 VAL_TEST_DATE = "'2025-01-01'"
 

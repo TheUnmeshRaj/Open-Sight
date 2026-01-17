@@ -128,34 +128,52 @@ def getPredDataByDate(date, LSTMModel, weatherModel, timeseriesModel, dataPivot,
     """
 
     dt = datetime.strptime(date[1:-1], '%Y-%m-%d')
-    if (dt <= left_limit):
-        print(f"Please choose date after {start_date}.", end=" ")
-        print("The crime data before that date is not applied due to limited computing resources.")
-        return 0
-    elif (dt > right_limit):
-        print(f"Please choose data before {right_limit}.")
-        print("Currently the model can not access future data for prediction.(Use data of last 12 days to predict on that day)")
-        return 0
+    # Future Date Handling:
+    # If the date is beyond our dataset, we switch to "Simulation Mode".
+    # We use the LAST available 12-day window as the "Trend Context".
     
-    # determine if the input date is valid for prediction
+    # Calculate the theoretical index
     minus_days = config.SEQ_LEN + 1
     if (dataPivot.query(f"date < {config.START_DATE}").shape[0] == 0):
         startIndex = 0
     else:
         startIndex = int(dataPivot.query(f"date < {config.START_DATE}").shape[0] / config.CRIME_TYPE_NUM - minus_days)
     
-    # get input feature and true labels
-    found_index = int(dataPivot.query(f"date < {date}").shape[0] / config.CRIME_TYPE_NUM - minus_days) - startIndex
-    labels_by_date = labels[found_index]
+    theoretical_index = int(dataPivot.query(f"date < {date}").shape[0] / config.CRIME_TYPE_NUM - minus_days) - startIndex
+    
+    # Check if we are in the future (index out of bounds)
+    is_future = False
+    if theoretical_index >= len(features):
+        is_future = True
+        found_index = len(features) - 1  # Clamp to last available day
+        print(f"Future Date Detected ({date}). Using last available data context.")
+    else:
+        found_index = theoretical_index
+
+    # Get features (Context)
     features_by_date = features[found_index]
+    
+    # Get labels (Truth) - Only if not future
+    if is_future:
+        labels_by_date = None # No truth for future
+    else:
+        labels_by_date = labels[found_index]
     
     # get pred from ConvLSTM
     processed_features = torch.from_numpy(features_by_date).to(device).unsqueeze(0).float()
     pred_data = LSTMModel(processed_features)[0][0]
     
-    getWeatherFactor = weatherModel.getWeatherFactor(date[1:-1])
-    getTimeseriesFactor = [timeseriesModel.getTimeseriesFactor(crime_name, date[1:-1]) for crime_name in crimeType]
-    
+    # Weather & Timeseries Factor Handling
+    try:
+        getWeatherFactor = weatherModel.getWeatherFactor(date[1:-1])
+    except:
+        getWeatherFactor = 1.0 # Default if weather data missing for future
+        
+    try:
+        getTimeseriesFactor = [timeseriesModel.getTimeseriesFactor(crime_name, date[1:-1]) for crime_name in crimeType]
+    except:
+        getTimeseriesFactor = [1.0] * len(crimeType) # Default if AR model fails
+
     return pred_data, labels_by_date, getWeatherFactor, getTimeseriesFactor
 
 def getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold, temporal_factor = True):
