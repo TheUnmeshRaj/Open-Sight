@@ -1,4 +1,4 @@
-# Luohao Xu edsml-lx122
+
 
 import os
 import torch
@@ -20,7 +20,7 @@ from geopy.exc import GeocoderTimedOut
 import config
 from LSTMModel import ConvLSTMModel
 from DataPreprocessing import DataPreprocessing
-from WeatherModel import WeatherModel
+# from WeatherModel import WeatherModel
 from TimeseriesModel import TimeseriesModel
 
 @st.cache_data
@@ -164,10 +164,8 @@ def getPredDataByDate(date, LSTMModel, weatherModel, timeseriesModel, dataPivot,
     pred_data = LSTMModel(processed_features)[0][0]
     
     # Weather & Timeseries Factor Handling
-    try:
-        getWeatherFactor = weatherModel.getWeatherFactor(date[1:-1])
-    except:
-        getWeatherFactor = 1.0 # Default if weather data missing for future
+    # Weather Model Disabled by User Request (No Data)
+    getWeatherFactor = 1.0 
         
     try:
         getTimeseriesFactor = [timeseriesModel.getTimeseriesFactor(crime_name, date[1:-1]) for crime_name in crimeType]
@@ -233,7 +231,7 @@ def run():
     features, labels, dataPivot, crimeData = loadDataset()
     # load models
     LSTMModel = loadLSTMModel()
-    weatherModel = loadWeatherModel()
+    # weatherModel = loadWeatherModel() # Disabled
     timeseriesModel = loadTimeseriesModel(crimeData)
 
     # limited by timeseries model
