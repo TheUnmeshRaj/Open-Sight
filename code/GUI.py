@@ -22,21 +22,21 @@ from LSTMModel import ConvLSTMModel
 from DataPreprocessing import DataPreprocessing
 # from WeatherModel import WeatherModel
 from TimeseriesModel import TimeseriesModel
-import gdown
-
-@st.cache_resource
-def download_model():
-    """
-    Download model weights from Google Drive if not present.
-    """
-    model_path = config.MODEL_WEIGHTS_PATH
-    if not os.path.exists(model_path):
-        url = 'https://drive.google.com/uc?id=13qcCVRyegruuFjoEaBq5AopGVbzqhTbr'
-        print(f"Downloading model from {url}...")
-        gdown.download(url, model_path, quiet=False)
-        print("Model downloaded successfully.")
-    else:
-        print("Model found locally.")
+# import gdown
+#
+# @st.cache_resource
+# def download_model():
+#     """
+#     Download model weights from Google Drive if not present.
+#     """
+#     model_path = config.MODEL_WEIGHTS_PATH
+#     if not os.path.exists(model_path):
+#         url = 'https://drive.google.com/uc?id=13qcCVRyegruuFjoEaBq5AopGVbzqhTbr'
+#         print(f"Downloading model from {url}...")
+#         gdown.download(url, model_path, quiet=False)
+#         print("Model downloaded successfully.")
+#     else:
+#         print("Model found locally.")
 
 @st.cache_data
 def get_location_coordinates(place_name):
@@ -246,7 +246,7 @@ def run():
     features, labels, dataPivot, crimeData = loadDataset()
     
     # Download weights if missing (Bypass LFS)
-    download_model()
+    # download_model()
     
     # load models
     LSTMModel = loadLSTMModel()
