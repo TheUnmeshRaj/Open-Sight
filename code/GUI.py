@@ -54,10 +54,16 @@ def download_model(force=False):
             session = requests.Session()
             response = session.get(url, params={'id': id}, stream=True)
             token = None
-            for key, value in response.cookies.items():
+            for key, value in session.cookies.items():
                 if key.startswith('download_warning'):
                     token = value
                     break
+            
+            if not token:
+                for key, value in response.cookies.items():
+                    if key.startswith('download_warning'):
+                        token = value
+                        break
             
             if token:
                 params = {'id': id, 'confirm': token}
