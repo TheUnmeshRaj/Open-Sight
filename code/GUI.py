@@ -45,40 +45,25 @@ def download_model(force=False):
         if os.path.exists(model_path):
              os.remove(model_path) # Clean start
              
-        # GDrive logic
-        id = '13qcCVRyegruuFjoEaBq5AopGVbzqhTbr'
-        url = "https://docs.google.com/uc?export=download"
+        # Hugging Face direct download (much simpler than GDrive)
+        url = "https://huggingface.co/aaditya752/crimedetection/resolve/main/BestModel.pt"
         
-        print(f"Downloading model from GDrive ID: {id}...")
+        print(f"Downloading model from Hugging Face...")
         try:
-            session = requests.Session()
-            response = session.get(url, params={'id': id}, stream=True)
-            token = None
-            for key, value in session.cookies.items():
-                if key.startswith('download_warning'):
-                    token = value
-                    break
-            
-            if not token:
-                for key, value in response.cookies.items():
-                    if key.startswith('download_warning'):
-                        token = value
-                        break
-            
-            if token:
-                params = {'id': id, 'confirm': token}
-                response = session.get(url, params=params, stream=True)
+            response = requests.get(url, stream=True)
+            response.raise_for_status()  # Raise error if download fails
                 
             with open(model_path, "wb") as f:
                 for chunk in response.iter_content(32768):
                     if chunk:
                         f.write(chunk)
             
-            # 2. Verify Download
-            if os.path.getsize(model_path) < 10000:
-                 raise Exception("Downloaded file is too small (likely HTML error page).")
+            # Verify Download
+            file_size = os.path.getsize(model_path)
+            if file_size < 100_000_000:  # Expect at least 100MB
+                 raise Exception(f"Downloaded file is too small ({file_size} bytes). Expected ~385MB.")
                  
-            print("Model downloaded and verified successfully.")
+            print(f"Model downloaded successfully ({file_size / 1_000_000:.1f}MB)")
             
         except Exception as e:
             print(f"Download FAILED: {e}")
