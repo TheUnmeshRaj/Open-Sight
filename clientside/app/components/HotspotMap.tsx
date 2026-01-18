@@ -7,6 +7,7 @@ import {
   CircleMarker,
   Popup,
   Polygon,
+  useMapEvents,
 } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
@@ -467,6 +468,9 @@ const HotspotMap: React.FC<MapProps> = ({
             </Popup>
           </CircleMarker>
         ))}
+
+        {/* Location Selector (for PredictionMap only) */}
+        {typeof onLocationSelect === "function" && <LocationSelector onSelect={onLocationSelect} />}
 
         {/* Custom CSS for leaflet popup */}
         <style jsx global>{`

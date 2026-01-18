@@ -190,7 +190,7 @@ export default function LoginPage() {
       {/* Animated gradient background */}
       <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-950 via-indigo-950/20 to-slate-950">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(99,102,241,0.15),transparent_50%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_60%,rgba(168,85,247,0.12),transparent_50%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_60%,rgba(167,85,247,0.12),transparent_50%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_80%,rgba(59,130,246,0.1),transparent_50%)]" />
       </div>
 
