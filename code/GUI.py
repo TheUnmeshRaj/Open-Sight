@@ -22,21 +22,49 @@ from LSTMModel import ConvLSTMModel
 from DataPreprocessing import DataPreprocessing
 # from WeatherModel import WeatherModel
 from TimeseriesModel import TimeseriesModel
-# import gdown
-#
-# @st.cache_resource
-# def download_model():
-#     """
-#     Download model weights from Google Drive if not present.
-#     """
-#     model_path = config.MODEL_WEIGHTS_PATH
-#     if not os.path.exists(model_path):
-#         url = 'https://drive.google.com/uc?id=13qcCVRyegruuFjoEaBq5AopGVbzqhTbr'
-#         print(f"Downloading model from {url}...")
-#         gdown.download(url, model_path, quiet=False)
-#         print("Model downloaded successfully.")
-#     else:
-#         print("Model found locally.")
+import requests
+
+@st.cache_resource
+def download_model():
+    """
+    Download model weights from Google Drive if not present locally (or if only pointer exists).
+     Checks if file is < 1KB (likely an LFS pointer) and re-downloads if needed.
+    """
+    model_path = config.MODEL_WEIGHTS_PATH
+    
+    # Check if file missing OR if it's just a tiny LFS pointer
+    needs_download = False
+    if not os.path.exists(model_path):
+        needs_download = True
+    elif os.path.getsize(model_path) < 2048: # If < 2KB, it's likely a text pointer
+        print(f"File {model_path} implies LFS pointer (size {os.path.getsize(model_path)} bytes). Downloading real weights...")
+        needs_download = True
+        
+    if needs_download:
+        # GDrive logic for large files (confirm token)
+        id = '13qcCVRyegruuFjoEaBq5AopGVbzqhTbr'
+        url = "https://docs.google.com/uc?export=download"
+        
+        print(f"Downloading model from GDrive ID: {id}...")
+        session = requests.Session()
+        response = session.get(url, params={'id': id}, stream=True)
+        token = None
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                token = value
+                break
+        
+        if token:
+            params = {'id': id, 'confirm': token}
+            response = session.get(url, params=params, stream=True)
+            
+        with open(model_path, "wb") as f:
+            for chunk in response.iter_content(32768):
+                if chunk:
+                    f.write(chunk)
+        print("Model downloaded successfully.")
+    else:
+        print("Model found locally and appears valid.")
 
 @st.cache_data
 def get_location_coordinates(place_name):
@@ -246,7 +274,7 @@ def run():
     features, labels, dataPivot, crimeData = loadDataset()
     
     # Download weights if missing (Bypass LFS)
-    # download_model()
+    download_model()
     
     # load models
     LSTMModel = loadLSTMModel()
