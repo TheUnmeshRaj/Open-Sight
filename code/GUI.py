@@ -104,7 +104,7 @@ def loadLSTMModel():
     print('Loading ConvLSTM Model')
     # model_save_path = projectDir + '/Data/ModelWeights' + f'/BestModel__bs-({config.TRAIN_BATCH_SIZE})_threshold-({config.CLASS_THRESH})_weights-({config.BCE_WEIGHTS}).pt'
     model_save_path = config.MODEL_WEIGHTS_PATH
-    model = torch.load(model_save_path, map_location=torch.device(device) )
+    model = torch.load(model_save_path, map_location=torch.device(device), weights_only=False)
     LSTM_model = ConvLSTMModel(input_dim=config.CRIME_TYPE_NUM, hidden_dim=config.HIDDEN_DIM, kernel_size=config.KERNEL_SIZE, bias=True)
     LSTM_model.load_state_dict(model['model'])
     return LSTM_model
