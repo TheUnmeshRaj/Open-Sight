@@ -13,7 +13,12 @@ PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CRIME_TYPE = ["crime"]
 CRIME_TYPE_NUM = 1
 # Dataset filename (must be in Data/Datasets/)
-DATASET_FILENAME = "bengaluru_crime_post_2019_full.csv"
+# Use smaller sample for cloud deployment (faster boot)
+import os
+if os.environ.get('STREAMLIT_RUNTIME') == 'true':
+    DATASET_FILENAME = "bengaluru_crime_sample.csv"
+else:
+    DATASET_FILENAME = "bengaluru_crime_post_2019_full.csv"
 
 # -------- CHANGE THESE TO MATCH YOUR CITY --------
 # Set bounds based on your dataset min/max
