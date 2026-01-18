@@ -25,44 +25,60 @@ from TimeseriesModel import TimeseriesModel
 import requests
 
 @st.cache_resource
-def download_model():
+def download_model(force=False):
     """
-    Download model weights from Google Drive if not present locally (or if only pointer exists).
-     Checks if file is < 1KB (likely an LFS pointer) and re-downloads if needed.
+    Download model weights from Google Drive.
+    Robustly handles LFS pointers, missing files, and corruption.
     """
     model_path = config.MODEL_WEIGHTS_PATH
     
-    # Check if file missing OR if it's just a tiny LFS pointer
-    needs_download = False
+    # 1. Determine if download is needed
+    needs_download = force
     if not os.path.exists(model_path):
+        print(f"File {model_path} missing. Downloading...")
         needs_download = True
-    elif os.path.getsize(model_path) < 2048: # If < 2KB, it's likely a text pointer
+    elif os.path.getsize(model_path) < 2048:
         print(f"File {model_path} implies LFS pointer (size {os.path.getsize(model_path)} bytes). Downloading real weights...")
         needs_download = True
-        
+
     if needs_download:
-        # GDrive logic for large files (confirm token)
+        if os.path.exists(model_path):
+             os.remove(model_path) # Clean start
+             
+        # GDrive logic
         id = '13qcCVRyegruuFjoEaBq5AopGVbzqhTbr'
         url = "https://docs.google.com/uc?export=download"
         
         print(f"Downloading model from GDrive ID: {id}...")
-        session = requests.Session()
-        response = session.get(url, params={'id': id}, stream=True)
-        token = None
-        for key, value in response.cookies.items():
-            if key.startswith('download_warning'):
-                token = value
-                break
-        
-        if token:
-            params = {'id': id, 'confirm': token}
-            response = session.get(url, params=params, stream=True)
+        try:
+            session = requests.Session()
+            response = session.get(url, params={'id': id}, stream=True)
+            token = None
+            for key, value in response.cookies.items():
+                if key.startswith('download_warning'):
+                    token = value
+                    break
             
-        with open(model_path, "wb") as f:
-            for chunk in response.iter_content(32768):
-                if chunk:
-                    f.write(chunk)
-        print("Model downloaded successfully.")
+            if token:
+                params = {'id': id, 'confirm': token}
+                response = session.get(url, params=params, stream=True)
+                
+            with open(model_path, "wb") as f:
+                for chunk in response.iter_content(32768):
+                    if chunk:
+                        f.write(chunk)
+            
+            # 2. Verify Download
+            if os.path.getsize(model_path) < 10000:
+                 raise Exception("Downloaded file is too small (likely HTML error page).")
+                 
+            print("Model downloaded and verified successfully.")
+            
+        except Exception as e:
+            print(f"Download FAILED: {e}")
+            if os.path.exists(model_path):
+                os.remove(model_path) # Don't leave junk
+            raise e
     else:
         print("Model found locally and appears valid.")
 
@@ -132,7 +148,16 @@ def loadLSTMModel():
     print('Loading ConvLSTM Model')
     # model_save_path = projectDir + '/Data/ModelWeights' + f'/BestModel__bs-({config.TRAIN_BATCH_SIZE})_threshold-({config.CLASS_THRESH})_weights-({config.BCE_WEIGHTS}).pt'
     model_save_path = config.MODEL_WEIGHTS_PATH
-    model = torch.load(model_save_path, map_location=torch.device(device), weights_only=False)
+    
+    try:
+        model = torch.load(model_save_path, map_location=torch.device(device), weights_only=False)
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("Model file might be corrupt or an LFS pointer. Re-downloading...")
+        download_model(force=True)
+        # Try again after download
+        model = torch.load(model_save_path, map_location=torch.device(device), weights_only=False)
+
     LSTM_model = ConvLSTMModel(input_dim=config.CRIME_TYPE_NUM, hidden_dim=config.HIDDEN_DIM, kernel_size=config.KERNEL_SIZE, bias=True)
     LSTM_model.load_state_dict(model['model'])
     return LSTM_model
