@@ -25,22 +25,39 @@ class DataPreprocessing:
         if not os.path.isfile(self.dataPivotDir):
             self.features, self.labels, self.dataPivot = self.getFeatureLabel()
         else:
-            print("Loading pivot data, features and labels")
-            self.dataPivot = pd.read_csv(self.dataPivotDir, index_col=[0, 1])
+            # Validate HDF5 files before loading
+            h5_files = [
+                self.projectDir + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_features.h5",
+                self.projectDir + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_labels.h5"
+            ]
+            
+            valid_cache = True
+            for h5_path in h5_files:
+                if not os.path.exists(h5_path) or os.path.getsize(h5_path) < 2048:
+                    valid_cache = False
+                    print(f"Invalid HDF5 cache found (Size: {os.path.getsize(h5_path) if os.path.exists(h5_path) else 'Missing'}). Regenerating...")
+                    break
+                try:
+                    with h5py.File(h5_path, "r") as test_f:
+                        pass
+                except:
+                    valid_cache = False
+                    print(f"Corrupt HDF5 cache found: {h5_path}. Regenerating...")
+                    break
 
-            with h5py.File(
-                self.projectDir
-                + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_features.h5",
-                "r",
-            ) as hf:
-                self.features = np.array(hf["features"][:])
+            if valid_cache:
+                print("Loading pivot data, features and labels")
+                self.dataPivot = pd.read_csv(self.dataPivotDir, index_col=[0, 1])
 
-            with h5py.File(
-                self.projectDir
-                + f"/Data/PreprocessedDatasets/{config.CRIME_TYPE_NUM}_labels.h5",
-                "r",
-            ) as hf:
-                self.labels = np.array(hf["labels"][:])
+                with h5py.File(h5_files[0], "r") as hf:
+                    self.features = np.array(hf["features"][:])
+
+                with h5py.File(h5_files[1], "r") as hf:
+                    self.labels = np.array(hf["labels"][:])
+            else:
+                # Force regeneration
+                print("Regenerating dataset cache from source...")
+                self.features, self.labels, self.dataPivot = self.getFeatureLabel()
 
         self.trainFeaturePath = (
             self.projectDir
