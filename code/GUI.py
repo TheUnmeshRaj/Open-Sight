@@ -524,9 +524,14 @@ def run_cumulative_map():
     st.info(f"📊 Total Incidents: {len(df):,}")
 
 if __name__ == "__main__":
-    # Get page parameter from URL
-    params = st.query_params
-    page = params.get("page", "dashboard")  # Default to dashboard for backward compatibility
+    # Get page parameter from URL (backward compatible)
+    try:
+        params = st.query_params
+        page = params.get("page", "dashboard")
+    except AttributeError:
+        # Older Streamlit version
+        params = st.experimental_get_query_params()
+        page = params.get("page", ["dashboard"])[0]
     
     if page == "home":
         run_cumulative_map()
