@@ -477,13 +477,16 @@ def run_cumulative_map():
     csv_path = config.PROJECT_DIR + "/Data/Datasets/" + config.DATASET_FILENAME
     crimeData = pd.read_csv(csv_path)
     
-    # Filter valid coordinates
+    # Filter valid coordinates within Bengaluru bounds
     df = crimeData[['Latitude', 'Longitude']].dropna()
-    df = df[(df['Latitude'] != 0) & (df['Longitude'] != 0)]  # Remove zero coords
+    df = df[
+        (df['Latitude'] >= config.LAT_MIN) & (df['Latitude'] <= config.LAT_MAX) &
+        (df['Longitude'] >= config.LON_MIN) & (df['Longitude'] <= config.LON_MAX)
+    ]
     df = df.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
     
     if len(df) == 0:
-        st.error("No valid crime data found")
+        st.error("No valid crime data found within Bengaluru bounds")
         return
     
     # Visualization type selector
@@ -498,21 +501,23 @@ def run_cumulative_map():
         layer = pdk.Layer(
             "HeatmapLayer",
             data=df,
-            get_position=["lon", "lat"],
-            aggregation='"MEAN"',
-            opacity=0.6,
+            get_position='[lon, lat]',
+            opacity=0.9,
+            radiusPixels=30,
         )
     else:  # Hexagon 3D
         layer = pdk.Layer(
             "HexagonLayer",
             data=df,
-            get_position=["lon", "lat"],
+            get_position='[lon, lat]',
             radius=200,
-            elevation_scale=50,
+            elevation_scale=4,
             elevation_range=[0, 3000],
+            auto_highlight=True,
             pickable=True,
             extruded=True,
-            opacity=0.7,
+            coverage=1,
+            opacity=0.6,
         )
     
     # Render map
@@ -521,7 +526,7 @@ def run_cumulative_map():
         initial_view_state=pdk.ViewState(
             latitude=config.LAT_MIN + (config.LAT_MAX - config.LAT_MIN) / 2,
             longitude=config.LON_MIN + (config.LON_MAX - config.LON_MIN) / 2,
-            zoom=11,
+            zoom=10.5,
             pitch=40 if vis_type == "Hexagon (3D)" else 0,
         ),
         layers=[layer],
