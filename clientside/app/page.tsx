@@ -3,26 +3,15 @@
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
-import ControlPanel from "@/app/components/ControlPanel";
 import Statistics from "@/app/components/Statistics";
 import NavBar from "@/app/components/NavBar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import RecentIncidents, { Incident } from "@/app/components/RecentIncidents";
 import OfficerDeployment, { Officer } from "@/app/components/OfficerDeployment";
 import WeeklyReport from "@/app/components/WeeklyReport";
+import StreamlitDashboard from "@/app/components/StreamlitDashboard";
 import { User } from "@supabase/supabase-js/dist/index.cjs";
 import { UserDashboard } from "@/app/components/UserDashboard";
-
-// Dynamically import the map component to avoid SSR issues
-const HotspotMap = dynamic(() => import("@/app/components/HotspotMap"), {
-  ssr: false,
-  loading: () => (
-    <div className="h-96 bg-gradient-to-br from-slate-200 to-slate-100 rounded-lg flex items-center justify-center">
-      <LoadingSpinner size="lg" />
-    </div>
-  ),
-});
 
 interface Hotspot {
   id: string;
@@ -339,21 +328,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-
-        {/* Control Panel */}
-        <div className="mb-8 animate-slide-in-down">
-          <ControlPanel
-            city={city}
-            onCityChange={setCity}
-            threshold={threshold}
-            onThresholdChange={setThreshold}
-            timeWindow={timeWindow}
-            onTimeWindowChange={setTimeWindow}
-            onRefresh={fetchHotspots}
-            loading={loading}
-          />
-        </div>
-
         {/* Statistics */}
         <div className="mb-8 animate-fade-in-up">
           <Statistics
@@ -373,9 +347,6 @@ export default function DashboardPage() {
                 <h2 className="text-2xl md:text-3xl font-bold text-slate-900">
                   Crime Hotspot Map
                 </h2>
-                <p className="text-slate-600 text-sm mt-1">
-                  Interactive map showing crime risk levels across the city
-                </p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-medium">
@@ -386,63 +357,9 @@ export default function DashboardPage() {
             </div>
             
             {/* Map Filters */}
-            <div className="flex flex-wrap gap-3 mt-4">
-              <select
-                value={districtFilter}
-                onChange={(e) => setDistrictFilter(e.target.value)}
-                aria-label="Filter by district"
-                className="border-2 border-slate-300 rounded-lg px-4 py-2 text-sm bg-slate-50 text-slate-900 font-semibold hover:bg-slate-100 hover:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-              >
-                <option value="all">All Districts</option>
-                <option value="koramangala">Koramangala</option>
-                <option value="indiranagar">Indiranagar</option>
-                <option value="whitefield">Whitefield</option>
-                <option value="jayanagar">Jayanagar</option>
-                <option value="marathahalli">Marathahalli</option>
-                <option value="electronic-city">Electronic City</option>
-              </select>
-              <select
-                value={incidentTypeFilter}
-                onChange={(e) => setIncidentTypeFilter(e.target.value)}
-                aria-label="Filter by incident type"
-                className="border-2 border-slate-300 rounded-lg px-4 py-2 text-sm bg-slate-50 text-slate-900 font-semibold hover:bg-slate-100 hover:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-              >
-                <option value="all">All Incident Types</option>
-                <option value="theft">Theft</option>
-                <option value="riot">Riot</option>
-                <option value="gunfire">Gunfire</option>
-                <option value="assault">Assault</option>
-                <option value="suspicious">Suspicious Activity</option>
-              </select>
-            </div>
           </div>
-          <div className="rounded-xl overflow-hidden border-2 border-slate-200 shadow-lg hover:shadow-xl transition-shadow duration-300">
-            <HotspotMap hotspots={hotspots} center={[12.9716, 77.5946]} />
-          </div>
-          
-          {/* Map Legend */}
-          <div className="mt-4 p-3 bg-slate-50 rounded-lg flex justify-between items-center">
-            <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <span className="text-xs font-medium text-slate-700">High Priority</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <span className="text-xs font-medium text-slate-700">Medium</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                <span className="text-xs font-medium text-slate-700">Low</span>
-              </div>
-            </div>
-            <button className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold flex items-center gap-1">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-              </svg>
-              Fullscreen
-            </button>
-          </div>
+          <StreamlitDashboard 
+          />
         </div>
 
         {/* Map and Incident List Grid */}
