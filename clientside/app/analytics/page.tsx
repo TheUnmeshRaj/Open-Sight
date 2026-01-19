@@ -207,7 +207,7 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Crime by District */}
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
-            <h3 className="text-xl font-bold text-slate-900 mb-4">Crime by District</h3>
+            <h3 className="text-xl font-bold text-slate-900 mb-4">Criminal Case Status Overview</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={districtData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -221,7 +221,7 @@ export default function AnalyticsPage() {
 
           {/* Hourly Distribution */}
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
-            <h3 className="text-xl font-bold text-slate-900 mb-4">Crime by Time of Day</h3>
+            <h3 className="text-xl font-bold text-slate-900 mb-4">Crime by Year</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={hourlyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
