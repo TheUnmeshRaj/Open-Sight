@@ -412,40 +412,70 @@ def run_cumulative_map():
     csv_path = config.PROJECT_DIR + "/Data/Datasets/" + config.DATASET_FILENAME
     crimeData = pd.read_csv(csv_path)
     
-    # Filter valid coordinates within Bengaluru bounds
-    df = crimeData[['Latitude', 'Longitude']].dropna()
-    df = df[
-        (df['Latitude'] >= config.LAT_MIN) & (df['Latitude'] <= config.LAT_MAX) &
-        (df['Longitude'] >= config.LON_MIN) & (df['Longitude'] <= config.LON_MAX)
-    ]
-    df = df.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+    # Identify the correct column for crime type
+    type_col = 'crime_type' if 'crime_type' in crimeData.columns else 'TYPE'
     
-    if len(df) == 0:
+    if type_col not in crimeData.columns:
+        st.error(f"Column '{type_col}' not found in dataset")
+        return
+
+    # Filter valid coordinates within Bengaluru bounds FIRST
+    crimeData = crimeData.dropna(subset=['Latitude', 'Longitude'])
+    crimeData = crimeData[
+        (crimeData['Latitude'] >= config.LAT_MIN) & (crimeData['Latitude'] <= config.LAT_MAX) &
+        (crimeData['Longitude'] >= config.LON_MIN) & (crimeData['Longitude'] <= config.LON_MAX)
+    ]
+    
+    if len(crimeData) == 0:
         st.error("No valid crime data found within Bengaluru bounds")
         return
-    
+
     # --- Controls ---
-    col1, col2 = st.columns([1, 2])
+    # Define Presets
+    PRESETS = {
+        "All Crimes": [], # Empty list means all
+        "👩 Women Safety": ['RAPE', 'MOLESTATION', 'DOWRY DEATHS', 'CRUELTY BY HUSBAND', 'INSULTING MODESTY OF WOMEN (EVE TEASING)', 'IMMORAL TRAFFIC', 'OFFENCES RELATED TO MARRIAGE'],
+        "👶 Child Safety": ['POCSO', 'KIDNAPPING AND ABDUCTION', 'CHILD LABOR ACT', 'EXPOSURE AND ABANDONMENT OF CHILD', 'INFANTICIDE'],
+        "📢 Public Safety": ['RIOTS', 'PUBLIC NUISANCE', 'PUBLIC SAFETY', 'ARSON', 'EXPLOSIVES', 'NEGLIGENT ACT'],
+        "🔪 Major Crimes": ['MURDER', 'ATTEMPT TO MURDER', 'CULPABLE HOMICIDE NOT AMOUNTING TO MURDER', 'ROBBERY', 'DACOITY', 'BURGLARY - DAY', 'BURGLARY - NIGHT'],
+        "🚗 Theft & Traffic": ['THEFT', 'MOTOR VEHICLE ACCIDENTS FATAL', 'MOTOR VEHICLE ACCIDENTS NON-FATAL', 'RECEIVING OF STOLEN PROPERTY']
+    }
+    
+    all_types = sorted(crimeData[type_col].unique().tolist())
+    
+    col1, col2, col3 = st.columns([1, 1, 2])
     
     with col1:
         vis_type = st.radio("Map Style:", ["Heatmap (2D)", "Hexagon (3D)"], horizontal=True)
-        
+
     with col2:
-         # Need to load crime types from raw data
-         # Fortunately we loaded crimeData above
-         if 'TYPE' in crimeData.columns:
-             all_types = sorted(crimeData['TYPE'].unique().tolist())
-             selected_types = st.multiselect("Filter Crime Types:", all_types, default=all_types)
-         else:
-             selected_types = []
+        preset_selection = st.selectbox("🎯 Quick Select:", list(PRESETS.keys()))
+
+    with col3:
+        # Determine default selection based on preset
+        if preset_selection == "All Crimes":
+            default_types = all_types
+        else:
+            # Filter preset list to only those that exist in dataset
+            target_types = PRESETS[preset_selection]
+            default_types = [t for t in target_types if t in all_types]
+            
+        selected_types = st.multiselect("Filter Crime Types:", all_types, default=default_types)
     
     st.divider()
     
     # Filter data by selected types
     if selected_types:
-        df = df[crimeData.loc[df.index, 'TYPE'].isin(selected_types)]
+        df_display = crimeData[crimeData[type_col].isin(selected_types)]
+    else:
+        df_display = pd.DataFrame() # Empty if nothing selected
 
-    st.write(f"Displaying **{len(df):,}** incidents.")
+    # Prepare for PyDeck
+    df = df_display[['Latitude', 'Longitude']].rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+
+    st.write(f"Displaying **{len(df):,}** incidents based on **{len(selected_types)}** selected types.")
+
+
     
     # Create map layer
     if vis_type == "Heatmap (2D)":
