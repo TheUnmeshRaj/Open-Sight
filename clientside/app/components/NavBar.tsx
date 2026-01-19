@@ -17,6 +17,7 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
   const pathname = usePathname();
   const [loading, setLoading] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [currentTime, setCurrentTime] = useState("");
@@ -71,6 +72,11 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
     onProfileOpen?.();
   };
 
+  const toggleMobileMenu = () => {
+    setShowMobileMenu(!showMobileMenu);
+    setShowMenu(false); // Close profile menu when opening mobile menu
+  };
+
   const getInitials = (name: string) => {
     if (!name) return "U";
     return name
@@ -89,7 +95,7 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <Link href="/" className="flex items-center gap-2 group">
+            <Link href="/" className="flex items-center gap-2 group" onClick={() => setShowMobileMenu(false)}>
               <div className="w-10 h-10 bg-linear-to-br from-emerald-400 to-emerald-600 rounded-lg flex items-center justify-center shadow-lg group-hover:shadow-emerald-500/50 transition-shadow">
                 <svg
                       className="h-6 text-white"
@@ -154,7 +160,7 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
           </div>
 
           {/* Live Clock & User Section */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             {/* Real-time Clock (Desktop) */}
             <div className="hidden lg:flex items-center gap-4">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-lg">
@@ -168,11 +174,11 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
             </div>
 
           {user ? (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 md:gap-4">
               <div className="relative">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all duration-300 text-white text-sm font-medium group"
+                  className="flex items-center gap-2 md:gap-3 px-2 md:px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all duration-300 text-white text-sm font-medium group"
                 >
                   {/* Avatar */}
                   <div className="relative w-8 h-8 rounded-full overflow-hidden border-2 border-emerald-400/30 group-hover:border-emerald-400 transition-all">
@@ -214,7 +220,7 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
                 </button>
 
                 {showMenu && (
-                  <div className="absolute right-0 mt-2 w-56 bg-slate-800 border border-white/10 rounded-lg shadow-xl overflow-hidden">
+                  <div className="absolute right-0 mt-2 w-48 sm:w-56 bg-slate-800 border border-white/10 rounded-lg shadow-xl overflow-hidden">
                     {/* Profile Header */}
                     <div className="px-4 py-3 bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border-b border-white/5">
                       <p className="text-sm font-semibold text-white">{fullName || "User"}</p>
@@ -273,10 +279,13 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
           <button
             type="button"
             aria-label="Toggle mobile menu"
-            className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors"
+            onClick={toggleMobileMenu}
+            className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors relative z-20"
           >
             <svg
-              className="w-5 h-5 text-white"
+              className={`w-6 h-6 text-white transition-transform duration-300 ${
+                showMobileMenu ? "rotate-90" : ""
+              }`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -285,11 +294,73 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
+                d={showMobileMenu ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"}
               />
             </svg>
           </button>
         </div>
+
+        {/* Mobile Menu */}
+        {showMobileMenu && (
+          <div className="md:hidden pb-4 border-t border-white/10">
+            <Link
+              href="/"
+              onClick={() => setShowMobileMenu(false)}
+              className={`block px-4 py-3 text-sm font-medium transition-all duration-300 ${
+                isActive("/")
+                  ? "text-emerald-400 bg-emerald-400/10 border-l-2 border-emerald-400"
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/predictions"
+              onClick={() => setShowMobileMenu(false)}
+              className={`block px-4 py-3 text-sm font-medium transition-all duration-300 ${
+                isActive("/predictions")
+                  ? "text-emerald-400 bg-emerald-400/10 border-l-2 border-emerald-400"
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              Predictions
+            </Link>
+            <Link
+              href="/analytics"
+              onClick={() => setShowMobileMenu(false)}
+              className={`block px-4 py-3 text-sm font-medium transition-all duration-300 ${
+                isActive("/analytics")
+                  ? "text-emerald-400 bg-emerald-400/10 border-l-2 border-emerald-400"
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              Analytics
+            </Link>
+            <Link
+              href="/report"
+              onClick={() => setShowMobileMenu(false)}
+              className={`block px-4 py-3 text-sm font-medium transition-all duration-300 ${
+                isActive("/report")
+                  ? "text-emerald-400 bg-emerald-400/10 border-l-2 border-emerald-400"
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              Report
+            </Link>
+            
+            {/* Mobile Clock */}
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-white/5 mt-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-lg">
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                LIVE
+              </div>
+              <div className="text-slate-300 text-xs">
+                <div className="font-mono font-semibold">{currentTime}</div>
+                <div className="text-slate-400">{currentDate}</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );
