@@ -466,8 +466,72 @@ def run():
             layers=[layer],
         ))
 
+def run_cumulative_map():
+    """
+    Cumulative Map Page - Shows all historical crime data
+    """
+    st.title("🗺️ Cumulative Crime Map")
+    st.caption("Showing all historical crime incidents in Bengaluru")
+    
+    # Load data
+    features, labels, dataPivot, crimeData = loadDataset()
+    
+    # All crime locations (using crimeData which has lat/lon)
+    df = crimeData[['Latitude', 'Longitude']].dropna()
+    df = df.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+    
+    # Visualization type selector
+    vis_type = st.sidebar.selectbox(
+        "Map Style",
+        ["Heatmap (2D)", "Hexagon (3D)"],
+        index=1
+    )
+    
+    # Create map layer
+    if vis_type == "Heatmap (2D)":
+        layer = pdk.Layer(
+            "HeatmapLayer",
+            data=df,
+            get_position=["lon", "lat"],
+            aggregation='"MEAN"',
+            opacity=0.6,
+        )
+    else:  # Hexagon 3D
+        layer = pdk.Layer(
+            "HexagonLayer",
+            data=df,
+            get_position=["lon", "lat"],
+            radius=200,
+            elevation_scale=50,
+            elevation_range=[0, 3000],
+            pickable=True,
+            extruded=True,
+            opacity=0.7,
+        )
+    
+    # Render map
+    st.pydeck_chart(pdk.Deck(
+        map_style="mapbox://styles/mapbox/dark-v9",
+        initial_view_state=pdk.ViewState(
+            latitude=config.LAT_MIN + (config.LAT_MAX - config.LAT_MIN) / 2,
+            longitude=config.LON_MIN + (config.LON_MAX - config.LON_MIN) / 2,
+            zoom=11,
+            pitch=40 if vis_type == "Hexagon (3D)" else 0,
+        ),
+        layers=[layer],
+    ))
+    
+    st.info(f"📊 Total Incidents: {len(df):,}")
+
 if __name__ == "__main__":
-    run()
+    # Get page parameter from URL
+    params = st.query_params
+    page = params.get("page", "dashboard")  # Default to dashboard for backward compatibility
+    
+    if page == "home":
+        run_cumulative_map()
+    else:  # dashboard or any other value
+        run()
 
 
 
