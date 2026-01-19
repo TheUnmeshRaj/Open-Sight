@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import NavBar from "@/app/components/NavBar";
-import StreamlitDashboard from "@/app/components/StreamlitDashboard";
+import StreamlitDashboardPred from "@/app/components/StreamlitDashboardPred";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import dynamic from "next/dynamic";
 import { User } from "@supabase/supabase-js";
@@ -18,22 +18,31 @@ const PredictionMap = dynamic(() => import("@/app/components/PredictionMap"), {
   ),
 });
 
+
 interface PredictionResult {
-  location: {
-    latitude: number;
-    longitude: number;
-    name: string;
-  };
-  date: string;
-  prediction: {
-    riskLevel: "high" | "medium" | "low";
+  crime_probability: number;
+  risk: "SAFE" | "UNSAFE";
+  top_crimes?: {
+    type: string;
     confidence: number;
-    expectedCrimes: number;
-    trend: "increasing" | "decreasing" | "stable";
-  };
-  crimeTypes: Record<string, number>;
-  nearbyIncidents: number;
+  }[];
 }
+
+const crimeMeta: Record<string, Partial<CrimeTypeInfo>> = {
+  "THEFT": { icon: "💰", severity: "medium" },
+  "BURGLARY": { icon: "🏚️", severity: "medium" },
+  "ASSAULT": { icon: "⚠️", severity: "high" },
+  "ROBBERY": { icon: "🔪", severity: "high" },
+};
+
+const getCrimeMeta = (crime: string) => {
+  const key = Object.keys(crimeMeta).find(k => crime.includes(k));
+  return crimeMeta[key ?? ""] ?? {
+    icon: "📋",
+    severity: "low",
+  };
+};
+
 
 interface CrimeTypeInfo {
   description: string;
@@ -369,6 +378,7 @@ export default function PredictionsPage() {
             Predict crime risk for any location and date in Bengaluru
           </p>
         </div>
+          <StreamlitDashboardPred/>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Prediction Form */}
@@ -508,6 +518,7 @@ export default function PredictionsPage() {
               </form>
             </div>
           </div>
+
           {/* Results and Map */}
           <div className="lg:col-span-2 space-y-6">
             {/* Map for location selection */}
@@ -569,10 +580,15 @@ export default function PredictionsPage() {
                     </div>
                     <span
                       className={`px-4 py-2 rounded-full text-lg font-bold border-2 ${getRiskColor(
-                        prediction.prediction.riskLevel
+                        
+prediction.risk === "UNSAFE" ? "High Risk" : "Low Risk"
+
+                        
                       )}`}
                     >
-                      {prediction.prediction.riskLevel.toUpperCase()} RISK
+                      {
+prediction.risk === "UNSAFE" ? "High Risk" : "Low Risk"
+.toUpperCase()} RISK
                     </span>
                   </div>
                 </div>
@@ -580,7 +596,9 @@ export default function PredictionsPage() {
                 <div className="grid grid-cols-2 gap-4 mb-8">
                   <div
                     className={`p-4 rounded-lg border-2 ${getRiskBgColor(
-                      prediction.prediction.riskLevel
+                      
+prediction.risk === "UNSAFE" ? "High Risk" : "Low Risk"
+
                     )}`}
                   >
                     <p className="text-sm font-semibold text-slate-700 mb-1">Confidence</p>
@@ -611,120 +629,45 @@ export default function PredictionsPage() {
                   </div>
                 </div>
 
-                {Object.keys(prediction.crimeTypes).length > 0 && (
-                  <div className="space-y-6">
-                    <h4 className="text-xl font-bold text-slate-900 mb-4">📊 Crime Type Analysis</h4>
-                    <div className="space-y-3">
-                      {Object.entries(prediction.crimeTypes)
-                        .sort(([, a], [, b]) => (b as number) - (a as number))
-                        .slice(0, 6)
-                        .map(([crime, count], idx) => {
-                          const crimeInfo = crimeTypeDetails[crime] || crimeTypeDetails["Other"];
-                          const maxCount = Math.max(...Object.values(prediction.crimeTypes) as number[]);
-                          const percentage = ((count as number) / maxCount) * 100;
-                          
-                          return (
-                            <div 
-                              key={idx} 
-                              className="group cursor-pointer hover:bg-slate-50 p-4 rounded-xl border-2 border-slate-200 transition-all hover:border-emerald-400 hover:shadow-md"
-                              onClick={() => setSelectedCrimeType(selectedCrimeType === crime ? null : crime)}
-                            >
-                              <div className="flex justify-between items-start mb-2">
-                                <div className="flex items-center gap-3 flex-1">
-                                  <span className="text-3xl">{crimeInfo.icon}</span>
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-bold text-slate-900">{crime}</span>
-                                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                        crimeInfo.severity === 'high' ? 'bg-red-100 text-red-700' :
-                                        crimeInfo.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                                        'bg-green-100 text-green-700'
-                                      }`}>
-                                        {crimeInfo.severity}
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-slate-600">{crimeInfo.description}</p>
-                                  </div>
-                                </div>
-                                <div className="text-right ml-4">
-                                  <div className="text-2xl font-bold text-emerald-600">{count}</div>
-                                  <div className="text-xs text-slate-500">incidents</div>
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center gap-2 mb-2">
-                                <div className="flex-1 bg-slate-200 rounded-full h-3 overflow-hidden">
-                                  <div
-                                    className={`h-3 rounded-full transition-all duration-500 ${
-                                      crimeInfo.severity === 'high' ? 'bg-gradient-to-r from-red-400 to-red-600' :
-                                      crimeInfo.severity === 'medium' ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' :
-                                      'bg-gradient-to-r from-green-400 to-green-600'
-                                    }`}
-                                    style={{ width: `${percentage}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs font-semibold text-slate-700 w-12 text-right">
-                                  {percentage.toFixed(0)}%
-                                </span>
-                              </div>
+                {prediction.top_crimes && (
+  <div className="space-y-4">
+    <h4 className="text-xl font-bold text-slate-900">
+      Likely Crime Types
+    </h4>
 
-                              {selectedCrimeType === crime && (
-                                <div className="mt-4 pt-4 border-t border-slate-200 space-y-3 animate-fade-in">
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className="font-semibold text-slate-700">🕒 Common Times:</span>
-                                    <span className="text-slate-600">{crimeInfo.commonTimes}</span>
-                                  </div>
-                                  
-                                  <div>
-                                    <div className="font-semibold text-slate-700 mb-2 text-sm flex items-center gap-2">
-                                      🛡️ Prevention Tips:
-                                    </div>
-                                    <ul className="space-y-1.5 ml-6">
-                                      {crimeInfo.prevention.map((tip, tipIdx) => (
-                                        <li key={tipIdx} className="text-sm text-slate-600 flex items-start gap-2">
-                                          <span className="text-emerald-500 mt-0.5">✓</span>
-                                          <span>{tip}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </div>
+    {prediction.top_crimes.map((crime, idx) => {
+      const meta = getCrimeMeta(crime.type);
 
-                    {/* Safety Recommendations */}
-                    <div className="mt-6 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
-                      <h5 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
-                        🛡️ General Safety Recommendations
-                      </h5>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="bg-white p-3 rounded-lg shadow-sm">
-                          <div className="font-semibold text-sm text-slate-700 mb-1">🚨 Emergency Contacts</div>
-                          <p className="text-xs text-slate-600">Police: 100 | Ambulance: 108</p>
-                        </div>
-                        <div className="bg-white p-3 rounded-lg shadow-sm">
-                          <div className="font-semibold text-sm text-slate-700 mb-1">👥 Stay Connected</div>
-                          <p className="text-xs text-slate-600">Share location with trusted contacts</p>
-                        </div>
-                        <div className="bg-white p-3 rounded-lg shadow-sm">
-                          <div className="font-semibold text-sm text-slate-700 mb-1">💡 Stay Alert</div>
-                          <p className="text-xs text-slate-600">Be aware of your surroundings</p>
-                        </div>
-                        <div className="bg-white p-3 rounded-lg shadow-sm">
-                          <div className="font-semibold text-sm text-slate-700 mb-1">🌙 Night Safety</div>
-                          <p className="text-xs text-slate-600">Use well-lit routes and trusted transport</p>
-                        </div>
-                      </div>
-                    </div>
+      return (
+        <div
+          key={idx}
+          className="p-4 rounded-xl border border-slate-200 hover:shadow-md transition"
+        >
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{meta.icon}</span>
+              <span className="font-semibold text-slate-900">
+                {crime.type}
+              </span>
+            </div>
 
-                    <div className="text-xs text-slate-500 text-center mt-4 italic">
-                      💡 Click on any crime type above to see detailed prevention tips
-                    </div>
-                  </div>
-                )}
+            <span className="text-sm font-bold text-emerald-700">
+              {(crime.confidence * 100).toFixed(1)}%
+            </span>
+          </div>
+
+          <div className="mt-2 bg-slate-200 rounded-full h-2">
+            <div
+              className="h-2 rounded-full bg-emerald-500"
+              style={{ width: `${crime.confidence * 100}%` }}
+            />
+          </div>
+        </div>
+      );
+    })}
+  </div>
+)}
+
               </div>
             )}
 
@@ -739,9 +682,6 @@ export default function PredictionsPage() {
             )}
           </div>
         </div>
-        <p className="text-slate-600 align-middle justify-center">This will also be implemented next</p>
-          <StreamlitDashboard/>
-
       </main>
     </div>
   );
