@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import NavBar from "@/app/components/NavBar";
+import StreamlitDashboard from "@/app/components/StreamlitDashboard";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import dynamic from "next/dynamic";
 import { User } from "@supabase/supabase-js";
@@ -507,7 +508,6 @@ export default function PredictionsPage() {
               </form>
             </div>
           </div>
-
           {/* Results and Map */}
           <div className="lg:col-span-2 space-y-6">
             {/* Map for location selection */}
@@ -531,6 +531,7 @@ export default function PredictionsPage() {
                         : null
                     }
                   />
+                  
                 </div>
 
                 {/* Selected coordinates display */}
@@ -738,6 +739,9 @@ export default function PredictionsPage() {
             )}
           </div>
         </div>
+        <p className="text-slate-600 align-middle justify-center">This will also be implemented next</p>
+          <StreamlitDashboard/>
+
       </main>
     </div>
   );

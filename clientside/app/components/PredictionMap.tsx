@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import L from "leaflet";
+import StreamlitDashboard from "@/app/components/StreamlitDashboard";
 
 // Import components dynamically
 const MapContainer = dynamic(
@@ -19,10 +20,6 @@ const CircleMarker = dynamic(
 );
 const Popup = dynamic(
   () => import("react-leaflet").then((mod) => mod.Popup),
-  { ssr: false }
-);
-const MapConsumer = dynamic(
-  () => import("react-leaflet").then((mod) => mod.MapConsumer),
   { ssr: false }
 );
 
@@ -176,6 +173,7 @@ const PredictionMap: React.FC<PredictionMapProps> = ({
             </CircleMarker>
           )}
         </MapContainer>
+
 
         {/* Click instruction overlay */}
         <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-3 border border-slate-200 max-w-xs">

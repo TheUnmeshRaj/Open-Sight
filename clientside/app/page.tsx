@@ -21,8 +21,9 @@ interface Hotspot {
   crimeCount: number;
 }
 
+
+
 interface Stats {
-  hotspotsCount: number;
   totalCrimes: number;
   averageRiskLevel: number;
   predictionAccuracy: number;
@@ -32,21 +33,14 @@ interface Stats {
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [showProfile, setShowProfile] = useState(false);
-  const [city, setCity] = useState("bangalore");
-  const [threshold, setThreshold] = useState(0.5);
-  const [timeWindow, setTimeWindow] = useState("current");
-  const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+  const hotspots: Hotspot[] = [];
   const [stats, setStats] = useState<Stats>({
-    hotspotsCount: 0,
     totalCrimes: 0,
     averageRiskLevel: 0,
     predictionAccuracy: 0.85,
   });
-  const [districtFilter, setDistrictFilter] = useState("all");
-  const [incidentTypeFilter, setIncidentTypeFilter] = useState("all");
   const [userReports, setUserReports] = useState<any[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
 
@@ -74,38 +68,15 @@ export default function DashboardPage() {
     checkAuth();
   }, [router]);
 
-  const fetchHotspots = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `/api/hotspots?city=${city}&threshold=${threshold}&timeWindow=${timeWindow}`
-      );
-      const data = await response.json();
-
-      if (data.error) {
-        console.error("Error fetching hotspots:", data.error);
-        setHotspots(generateMockHotspots());
-      } else {
-        setHotspots(data.hotspots || generateMockHotspots());
-      }
-    } catch (err) {
-      console.error("Error:", err);
-      setHotspots(generateMockHotspots());
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchStatistics = async () => {
     try {
-      const response = await fetch(`/api/statistics?city=${city}`);
+      const response = await fetch(`/api/statistics?city=Bangalore`);
       const data = await response.json();
 
       if (!data.error) {
         setStats(data);
       } else {
         setStats({
-          hotspotsCount: hotspots.length,
           totalCrimes: 2847,
           averageRiskLevel: 0.62,
           predictionAccuracy: 0.85,
@@ -138,27 +109,6 @@ export default function DashboardPage() {
     } finally {
       setLoadingReports(false);
     }
-  };
-
-  const generateMockHotspots = (): Hotspot[] => {
-    const locations: [number, number][] = [
-      [12.9352, 77.6245],
-      [12.9716, 77.5946],
-      [12.935, 77.62],
-      [13.0027, 77.5914],
-      [12.9142, 77.6391],
-    ];
-
-    return locations.map((loc, idx) => ({
-      id: `hotspot-${idx}`,
-      latitude: loc[0],
-      longitude: loc[1],
-      riskLevel: ["high", "medium", "low"][Math.floor(Math.random() * 3)] as
-        | "high"
-        | "medium"
-        | "low",
-      crimeCount: Math.floor(Math.random() * 50) + 10,
-    }));
   };
 
   // Mock data for incidents
@@ -255,16 +205,10 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    if (user) {
-      fetchHotspots();
-    }
-  }, [user, city, threshold, timeWindow]);
-
-  useEffect(() => {
     if (hotspots.length > 0) {
       fetchStatistics();
     }
-  }, [hotspots, city]);
+  }, [hotspots, "Bangalore"]);
 
   useEffect(() => {
     if (user) {
@@ -309,29 +253,17 @@ export default function DashboardPage() {
                 Crime Hotspot Analytics
               </h1>
               <p className="text-slate-600 text-lg">
-                Real-time predictions for {city.charAt(0).toUpperCase() + city.slice(1)}
+                Real-time predictions for Bengaluru
               </p>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={fetchHotspots}
-                disabled={loading}
-                className="px-6 py-3 bg-white border-2 border-slate-200 text-slate-900 font-semibold rounded-xl hover:bg-slate-50 hover:border-emerald-300 transition-all duration-300 disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg"
-              >
-                {loading ? <LoadingSpinner size="sm" /> : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                )}
-                {loading ? "Refreshing..." : "Refresh"}
-              </button>
             </div>
           </div>
         </div>
         {/* Statistics */}
         <div className="mb-8 animate-fade-in-up">
           <Statistics
-            hotspotsCount={stats.hotspotsCount}
+            hotspotsCount={10000}
             totalCrimes={stats.totalCrimes}
             averageRiskLevel={stats.averageRiskLevel}
             predictionAccuracy={stats.predictionAccuracy}
@@ -358,8 +290,7 @@ export default function DashboardPage() {
             
             {/* Map Filters */}
           </div>
-          <StreamlitDashboard 
-          />
+          <StreamlitDashboard/>
         </div>
 
         {/* Map and Incident List Grid */}
