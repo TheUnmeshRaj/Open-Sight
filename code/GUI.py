@@ -336,11 +336,14 @@ def run():
         threshold = st.slider("Threshold:", 0.0, 1.0, 0.5)
 
     with col3:
-        st.write("#### 🚨 Crime Type")
-        typeChosen = st.selectbox("Select Type:", crimeType)
-        type_num = crimeType.index(typeChosen)
-        st.write("") # Spacer
-        submitted = st.button("🚀 Predict Heatmap", type="primary", use_container_width=True)
+        st.write("#### � Analysis")
+        # Single channel model, only supports aggregated crime prediction
+        typeChosen = "Aggregated Crime"
+        type_num = 0 
+        
+        st.write("") # Spacer for alignment
+        st.write("") 
+        submitted = st.button("Predict Heatmap", type="primary", use_container_width=True)
 
     st.divider()
 
