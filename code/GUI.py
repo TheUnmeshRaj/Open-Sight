@@ -405,8 +405,6 @@ def run_cumulative_map():
     """
     Cumulative Map Page - Shows all historical crime data
     """
-    st.title("🗺️ Cumulative Crime Map")
-    st.caption("Showing all historical crime incidents in Bengaluru")
     
     # Load RAW crime data directly from CSV
     csv_path = config.PROJECT_DIR + "/Data/Datasets/" + config.DATASET_FILENAME
