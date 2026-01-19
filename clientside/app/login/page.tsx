@@ -6,9 +6,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 
-/* =======================
-   Particle Background
-======================= */
 
 function ParticleBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
