@@ -473,12 +473,18 @@ def run_cumulative_map():
     st.title("🗺️ Cumulative Crime Map")
     st.caption("Showing all historical crime incidents in Bengaluru")
     
-    # Load data
-    features, labels, dataPivot, crimeData = loadDataset()
+    # Load RAW crime data directly from CSV
+    csv_path = config.PROJECT_DIR + "/Data/Datasets/" + config.DATASET_FILENAME
+    crimeData = pd.read_csv(csv_path)
     
-    # All crime locations (using crimeData which has lat/lon)
+    # Filter valid coordinates
     df = crimeData[['Latitude', 'Longitude']].dropna()
+    df = df[(df['Latitude'] != 0) & (df['Longitude'] != 0)]  # Remove zero coords
     df = df.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+    
+    if len(df) == 0:
+        st.error("No valid crime data found")
+        return
     
     # Visualization type selector
     vis_type = st.sidebar.selectbox(
