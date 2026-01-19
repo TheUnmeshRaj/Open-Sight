@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import jsPDF from "jspdf";
 import Statistics from "@/app/components/Statistics";
 import TrendChart from "@/app/components/TrendChart";
 import NavBar from "@/app/components/NavBar";
@@ -174,20 +175,125 @@ export default function DashboardPage() {
   };
 
   const handleExportReport = () => {
-    const reportData = {
-      date: new Date().toISOString(),
-      totalCrimes: stats.totalCrimes,
-      stats: stats,
-      crimeTypes: REAL_CRIME_STATS.crimeTypes,
-    };
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    let yPosition = margin;
+
+    // Set colors and fonts
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(31, 41, 55); // slate-800
     
-    const element = document.createElement('a');
-    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(JSON.stringify(reportData, null, 2)));
-    element.setAttribute('download', `Crime_Report_${new Date().getTime()}.json`);
-    element.style.display = 'none';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+    // Title
+    doc.text("CRIME REPORT", margin, yPosition);
+    yPosition += 12;
+
+    // Report date
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(107, 114, 128); // slate-500
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, margin, yPosition);
+    yPosition += 12;
+
+    // Divider
+    doc.setDrawColor(226, 232, 240); // slate-200
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 8;
+
+    // Statistics Section
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(31, 41, 55);
+    doc.text("Overview Statistics", margin, yPosition);
+    yPosition += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(55, 65, 81);
+
+    const stats_data = [
+      [`Total Crimes Reported: `, `${stats.totalCrimes.toLocaleString()}`],
+      [`Active Hotspots: `, `${stats.hotspotsCount}`],
+      [`Average Risk Level: `, `${(stats.averageRiskLevel * 100).toFixed(2)}%`],
+      [`Prediction Accuracy: `, `${(stats.predictionAccuracy * 100).toFixed(2)}%`],
+      [`Arrest Rate: `, `${(REAL_CRIME_STATS.arrestRate * 100).toFixed(2)}%`],
+      [`Conviction Rate: `, `${(REAL_CRIME_STATS.convictionRate * 100).toFixed(2)}%`],
+    ];
+
+    stats_data.forEach(([label, value]) => {
+      doc.text(label, margin + 5, yPosition);
+      doc.setFont("helvetica", "bold");
+      doc.text(value, pageWidth - margin - 30, yPosition);
+      doc.setFont("helvetica", "normal");
+      yPosition += 7;
+    });
+
+    yPosition += 5;
+
+    // Crime Types Section
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(31, 41, 55);
+    doc.text("Crime Distribution", margin, yPosition);
+    yPosition += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(55, 65, 81);
+
+    REAL_CRIME_STATS.crimeTypes.forEach((crime: any) => {
+      if (yPosition > pageHeight - margin - 10) {
+        doc.addPage();
+        yPosition = margin;
+      }
+      const percentage = ((crime.count / stats.totalCrimes) * 100).toFixed(1);
+      doc.text(`• ${crime.type}: ${crime.count.toLocaleString()} (${percentage}%)`, margin + 5, yPosition);
+      yPosition += 6;
+    });
+
+    yPosition += 8;
+
+    // Recent Incidents Section
+    if (yPosition > pageHeight - margin - 20) {
+      doc.addPage();
+      yPosition = margin;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(31, 41, 55);
+    doc.text("Recent Incidents", margin, yPosition);
+    yPosition += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(55, 65, 81);
+
+    const recentIncidents = generateRecentIncidents().slice(0, 5);
+    recentIncidents.forEach((incident: any, index: number) => {
+      if (yPosition > pageHeight - margin - 10) {
+        doc.addPage();
+        yPosition = margin;
+      }
+      doc.text(`${index + 1}. ${incident.type} - ${incident.location}`, margin + 5, yPosition);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(107, 114, 128);
+      doc.text(`   Date: ${new Date(incident.date).toLocaleDateString()} | Status: ${incident.status}`, margin + 8, yPosition + 4);
+      doc.setTextColor(55, 65, 81);
+      yPosition += 10;
+    });
+
+    // Footer
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8);
+    doc.setTextColor(156, 163, 175); // slate-400
+    doc.text("OpenSight Crime Analytics Dashboard", margin, pageHeight - 10);
+    doc.text(`Report Generated on ${new Date().toLocaleDateString()}`, pageWidth - margin - 50, pageHeight - 10);
+
+    // Save PDF
+    doc.save(`Crime_Report_${new Date().getTime()}.pdf`);
   };
 
   const handleGenerateReport = () => {
@@ -262,7 +368,7 @@ export default function DashboardPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
-                Export
+                Download PDF
               </button>
               <button
                 onClick={handleGenerateReport}
