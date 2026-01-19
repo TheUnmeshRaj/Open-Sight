@@ -307,13 +307,15 @@ def run():
         st.session_state['view_lon'] = (config.LON_MIN + config.LON_MAX) / 2
         st.session_state['view_zoom'] = 10
 
-    with st.sidebar:
-        st.write("## Mode Selection")
-        app_mode = st.radio("Choose Mode:", ["Prediction Model", "Cumulative Heatmap (All Data)"])
-        st.write("---")
-        
-        st.write("## 🔍 Search Location")
-        search_query = st.text_input("Enter place name (e.g. Indiranagar)")
+    # --- Top Navigation & Controls ---
+    st.write("## 🔮 Crime Prediction Dashboard")
+    
+    # Create 3 columns for controls
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("#### 📍 Location & Date")
+        search_query = st.text_input("Search (e.g. Indiranagar)")
         if search_query:
             coords = get_location_coordinates(search_query)
             if coords:
@@ -323,140 +325,70 @@ def run():
                 st.session_state['view_zoom'] = 14
                 st.success(f"Found: {search_query}")
             else:
-                st.error("Location not found in Bengaluru")
-        st.write("---")
+                st.error("Not found")
+                
+        dateChosen = st.date_input("Date:", min_value=startDate, max_value=endDate, value=startDate)
+        dataChosenStr = dateChosen.strftime('%Y-%m-%d')
+        inputDate = f"\'{dataChosenStr}\'"
 
-        # Visualization Style
-        st.write("## 🎨 Map Style")
-        vis_type = st.radio("Choose Style:", ["Heatmap (2D)", "Hexagon (3D)"])
-        st.write("---")
+    with col2:
+        st.write("#### ⚙️ Settings")
+        vis_type = st.radio("Map Style:", ["Heatmap (2D)", "Hexagon (3D)"], horizontal=True)
+        threshold = st.slider("Threshold:", 0.0, 1.0, 0.5)
 
-    if app_mode == "Prediction Model":
-        # Input parameters in the sidebar
-        with st.sidebar:
-            st.sidebar.write("Choose Parameters for Prediction")
-            with st.form("my_form"):
-                # select data in the given range
-                dateChosen = st.date_input("Choose date:",  min_value=startDate, max_value=endDate, value=startDate)
-                dataChosenStr = dateChosen.strftime('%Y-%m-%d')
-                inputDate = f"\'{dataChosenStr}\'"
+    with col3:
+        st.write("#### 🚨 Crime Type")
+        typeChosen = st.selectbox("Select Type:", crimeType)
+        type_num = crimeType.index(typeChosen)
+        st.write("") # Spacer
+        submitted = st.button("🚀 Predict Heatmap", type="primary", use_container_width=True)
 
-                # select one of eight crime type
-                typeChosen = st.radio("Select crime type:", crimeType)
-                type_num = crimeType.index(typeChosen)
+    st.divider()
 
-                # select threshold for prediction
-                threshold = st.select_slider("Adjust threshold:", options=[i/100 for i in range(1,100)])
-                # button for start processing prediction
-                submitted = st.form_submit_button("Predict")
+    # --- Logic ---
+    if not submitted:
+        # Default view
+        st.pydeck_chart(pdk.Deck(
+            map_style='light',
+            initial_view_state=pdk.ViewState(
+                longitude = st.session_state['view_lon'],
+                latitude = st.session_state['view_lat'],
+                zoom = st.session_state['view_zoom'],
+                pitch=50,
+            ),
+            layers=[]
+        ))
+
+    if submitted:
+        st.info(f"Predicting **{typeChosen}** for **{dateChosen}** (Threshold: {threshold})")
         
-        # default map when initializing
-        if not submitted:
-            st.write()
-            "👈 👈 👈 Please choose parameters for prediction"
-            st.pydeck_chart(pdk.Deck(
-                map_style=None,
-                initial_view_state=pdk.ViewState(
-                    longitude = st.session_state['view_lon'],
-                    latitude = st.session_state['view_lat'],
-                    zoom = st.session_state['view_zoom'],
-                    pitch=50,
-                ),
-                layers=[]
-            ))
-
-        # plot 3d interactive map by using pydeck_chart
-        if submitted:
-            st.write()
-            # show selected parameters
-            'You selected: ', typeChosen, 'on date ', dateChosen, 'with threshold of ', threshold
-            'Prediction Results: '
-            pred_data, real_data, getWeatherFactor, getTimeseriesFactor = getPredDataByDate(inputDate, LSTMModel, timeseriesModel, dataPivot, features, labels)
-            chart_data = getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold)
-            if vis_type == "Hexagon (3D)":
-                layer = pdk.Layer(
-                    'HexagonLayer',
-                    data=chart_data,
-                    get_position='[lon, lat]',
-                    radius=400,
-                    elevation_scale=1,
-                    elevation_range=[0, 8000],
-                    auto_highlight=True,
-                    pickable=True,
-                    extruded=True,
-                    opacity=0.6,
-                )
-            else:
-                layer = pdk.Layer(
-                    'HeatmapLayer',
-                    data=chart_data,
-                    get_position='[lon, lat]',
-                    opacity=0.9,
-                    radiusPixels=50,
-                )
-
-            st.pydeck_chart(pdk.Deck(
-                map_style='light',
-                initial_view_state=pdk.ViewState(
-                    longitude = st.session_state['view_lon'],
-                    latitude = st.session_state['view_lat'],
-                    zoom = st.session_state['view_zoom'],
-                    pitch=40 if vis_type == "Hexagon (3D)" else 0,
-                ),
-                layers=[layer],
-            ))
-
-    elif app_mode == "Cumulative Heatmap (All Data)":
-        st.write("## 🗺️ Cumulative Crime Heatmap")
+        pred_data, real_data, getWeatherFactor, getTimeseriesFactor = getPredDataByDate(inputDate, LSTMModel, timeseriesModel, dataPivot, features, labels)
+        chart_data = getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold)
         
-        # Get unique crime types from the dataset
-        all_crime_types = sorted(crimeData['TYPE'].unique().tolist())
-        
-        with st.sidebar:
-            st.write("## 🕸️ Filter Data")
-            selected_types = st.multiselect(
-                "Select Crime Types:",
-                options=all_crime_types,
-                default=all_crime_types
-            )
-            st.write("---")
-
-        st.write(f"Displaying {len(selected_types)} crime types within configured bounds.")
-        
-        # Filter raw data based on config bounds AND selected types
-        df_display = crimeData[
-            (crimeData['Longitude'] >= config.LON_MIN) & (crimeData['Longitude'] <= config.LON_MAX) &
-            (crimeData['Latitude'] >= config.LAT_MIN) & (crimeData['Latitude'] <= config.LAT_MAX) &
-            (crimeData['TYPE'].isin(selected_types))
-        ]
-        
-        st.write(f"**Total Points Displayed:** {len(df_display)}")
-
         if vis_type == "Hexagon (3D)":
             layer = pdk.Layer(
                 'HexagonLayer',
-                data=df_display,
-                get_position='[Longitude, Latitude]',
-                radius=200,
-                elevation_scale=4,
-                elevation_range=[0, 3000],
+                data=chart_data,
+                get_position='[lon, lat]',
+                radius=400,
+                elevation_scale=1,
+                elevation_range=[0, 8000],
                 auto_highlight=True,
                 pickable=True,
                 extruded=True,
-                coverage=1,
-                opacity=0.6
+                opacity=0.6,
             )
         else:
             layer = pdk.Layer(
                 'HeatmapLayer',
-                data=df_display,
-                get_position='[Longitude, Latitude]',
+                data=chart_data,
+                get_position='[lon, lat]',
                 opacity=0.9,
-                radiusPixels=30,
+                radiusPixels=50,
             )
-
+        
         st.pydeck_chart(pdk.Deck(
-            map_style=None,
+            map_style='light',
             initial_view_state=pdk.ViewState(
                 longitude = st.session_state['view_lon'],
                 latitude = st.session_state['view_lat'],
@@ -465,6 +397,9 @@ def run():
             ),
             layers=[layer],
         ))
+
+    # Legacy cumulative logic moved to separate function
+    return
 
 def run_cumulative_map():
     """
@@ -489,12 +424,28 @@ def run_cumulative_map():
         st.error("No valid crime data found within Bengaluru bounds")
         return
     
-    # Visualization type selector
-    vis_type = st.sidebar.selectbox(
-        "Map Style",
-        ["Heatmap (2D)", "Hexagon (3D)"],
-        index=1
-    )
+    # --- Controls ---
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        vis_type = st.radio("Map Style:", ["Heatmap (2D)", "Hexagon (3D)"], horizontal=True)
+        
+    with col2:
+         # Need to load crime types from raw data
+         # Fortunately we loaded crimeData above
+         if 'TYPE' in crimeData.columns:
+             all_types = sorted(crimeData['TYPE'].unique().tolist())
+             selected_types = st.multiselect("Filter Crime Types:", all_types, default=all_types)
+         else:
+             selected_types = []
+    
+    st.divider()
+    
+    # Filter data by selected types
+    if selected_types:
+        df = df[crimeData.loc[df.index, 'TYPE'].isin(selected_types)]
+
+    st.write(f"Displaying **{len(df):,}** incidents.")
     
     # Create map layer
     if vis_type == "Heatmap (2D)":
