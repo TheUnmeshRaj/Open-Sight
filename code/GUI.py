@@ -396,7 +396,7 @@ def run():
                 )
 
             st.pydeck_chart(pdk.Deck(
-                map_style=None,
+                map_style="mapbox://styles/mapbox/light-v9",
                 initial_view_state=pdk.ViewState(
                     longitude = st.session_state['view_lon'],
                     latitude = st.session_state['view_lat'],
@@ -522,7 +522,7 @@ def run_cumulative_map():
     
     # Render map
     st.pydeck_chart(pdk.Deck(
-        map_style="mapbox://styles/mapbox/dark-v9",
+        map_style="mapbox://styles/mapbox/light-v9",
         initial_view_state=pdk.ViewState(
             latitude=config.LAT_MIN + (config.LAT_MAX - config.LAT_MIN) / 2,
             longitude=config.LON_MIN + (config.LON_MAX - config.LON_MIN) / 2,
