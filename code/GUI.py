@@ -308,7 +308,6 @@ def run():
         st.session_state['view_zoom'] = 10
 
     # --- Top Navigation & Controls ---
-    st.write("## 🔮 Crime Prediction Dashboard")
     
     # Create 3 columns for controls
     col1, col2, col3 = st.columns(3)
