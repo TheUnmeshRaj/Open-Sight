@@ -78,6 +78,7 @@ export default function ReportPage() {
             ...formData,
             user_id: user?.id,
             status: 'pending',
+            verification_status: 'pending', // Report starts as pending verification
             created_at: new Date().toISOString(),
           }
         ])

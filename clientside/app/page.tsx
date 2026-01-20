@@ -45,6 +45,7 @@ export default function DashboardPage() {
     hotspotsCount: generateHotspots().length,
   });
   const [userReports, setUserReports] = useState<any[]>([]);
+  const [allUserReports, setAllUserReports] = useState<any[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -103,14 +104,19 @@ export default function DashboardPage() {
       const supabase = createClient();
       const { data: reports, error } = await supabase
         .from('crime_reports')
-        .select('*')
+        .select(`*, assigned_officer:assigned_officer_id (id, name, badge_number, status, current_location)`)
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching reports:', error);
       } else {
-        setUserReports(reports || []);
+        // Show only approved reports in the main list
+        const approved = (reports || []).filter(r => r.verification_status === 'approved');
+        setUserReports(approved);
+
+        // Keep a separate list with all reports (pending/approved) for assigned status visibility
+        setAllUserReports(reports || []);
       }
     } catch (err) {
       console.error('Error fetching reports:', err);
@@ -305,10 +311,33 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    if (user) {
-      fetchStatistics();
-      fetchUserReports();
-    }
+    if (!user) return;
+
+    fetchStatistics();
+    fetchUserReports();
+
+    // Subscribe to user's report changes (assignment, verification, status)
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`user-reports:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'crime_reports',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          // Re-fetch reports when anything changes for this user
+          fetchUserReports();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   if (initializing) {
@@ -518,6 +547,36 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* My Pending & Assigned Submissions */}
+        {allUserReports && allUserReports.filter(r => r.verification_status === 'pending').length > 0 && (
+          <div className="mb-6">
+            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+              <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+                <h3 className="text-lg font-bold text-slate-900">My Submitted Reports (Pending)</h3>
+                <p className="text-sm text-slate-600 mt-1">Reports awaiting admin verification. Assigned officers (if any) will appear here.</p>
+              </div>
+
+              <div className="p-4">
+                {allUserReports.filter(r => r.verification_status === 'pending').map((report) => (
+                  <div key={report.id} className="flex items-center justify-between py-3 border-b border-slate-100">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{report.crime_type.replace('_', ' ')}</div>
+                      <div className="text-xs text-slate-500">{report.location}, {report.district} • {new Date(report.created_at).toLocaleDateString()}</div>
+                    </div>
+                    <div className="text-right">
+                      {report.assigned_officer ? (
+                        <div className="text-sm font-semibold text-slate-900">Assigned: {report.assigned_officer.name}</div>
+                      ) : (
+                        <div className="text-sm text-slate-500">No officer assigned yet</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* My Crime Reports */}
         {userReports.length > 0 && (
           <div className="mb-8">
@@ -549,6 +608,9 @@ export default function DashboardPage() {
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
                         Priority
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                        Assigned Officer
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
                         Status
@@ -593,6 +655,18 @@ export default function DashboardPage() {
                             {report.priority.toUpperCase()}
                           </span>
                         </td>
+
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {report.assigned_officer ? (
+                            <div className="text-sm text-slate-900">
+                              <div className="font-semibold">{report.assigned_officer.name}</div>
+                              <div className="text-xs text-slate-500">{report.assigned_officer.badge_number}</div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-500">Unassigned</div>
+                          )}
+                        </td>
+
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
                             className={`px-3 py-1 text-xs font-bold rounded-full ${

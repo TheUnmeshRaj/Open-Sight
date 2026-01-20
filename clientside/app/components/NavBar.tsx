@@ -22,6 +22,7 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
   const [avatarUrl, setAvatarUrl] = useState("");
   const [currentTime, setCurrentTime] = useState("");
   const [currentDate, setCurrentDate] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -30,6 +31,9 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
         const profile = await getUserProfile(user.id);
         if (profile?.full_name) {
           setFullName(profile.full_name);
+        }
+        if (profile?.is_admin || profile?.role === 'admin') {
+          setIsAdmin(true);
         }
         const avatar = getUserAvatarUrl(user.id);
         setAvatarUrl(avatar);
@@ -314,6 +318,22 @@ const NavBar: React.FC<NavBarProps> = ({ user, onProfileOpen, onProfileClose }) 
             >
               Dashboard
             </Link>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setShowMobileMenu(false)}
+                className={`block px-4 py-3 text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
+                  isActive("/admin")
+                    ? "text-red-400 bg-red-400/10 border-l-2 border-red-400"
+                    : "text-slate-300 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                Admin Panel
+              </Link>
+            )}
             <Link
               href="/predictions"
               onClick={() => setShowMobileMenu(false)}
