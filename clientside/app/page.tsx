@@ -387,7 +387,6 @@ export default function DashboardPage() {
           <Statistics
             hotspotsCount={stats.hotspotsCount}
             totalCrimes={stats.totalCrimes}
-            averageRiskLevel={stats.averageRiskLevel}
             predictionAccuracy={stats.predictionAccuracy}
           />
         </div>
