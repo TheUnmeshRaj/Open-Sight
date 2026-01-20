@@ -18,6 +18,13 @@ interface CrimeReport {
   priority: "high" | "medium" | "low";
   status: string;
   verification_status: "pending" | "approved" | "rejected";
+  assigned_officer?: {
+    id: string;
+    name: string;
+    badge_number: string;
+    status: string;
+    current_location: string;
+  };
   created_at: string;
   user_profile?: {
     full_name: string;
@@ -41,7 +48,7 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
   useEffect(() => {
     fetchPendingReports();
 
-    // Subscribe to real-time updates
+    // Subscribe to real-time updates (listen to all report changes so we can show approved-but-unassigned)
     const supabase = createClient();
     const channel = supabase
       .channel('pending-reports')
@@ -50,8 +57,7 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
         {
           event: '*',
           schema: 'public',
-          table: 'crime_reports',
-          filter: 'verification_status=eq.pending'
+          table: 'crime_reports'
         },
         () => {
           fetchPendingReports();
@@ -68,18 +74,18 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
     try {
       const supabase = createClient();
       
-      // First fetch reports with user IDs
+      // First fetch reports with user IDs; include both pending and approved (so approved-but-unassigned stays visible)
       const { data: reportsData, error: reportsError } = await supabase
         .from('crime_reports')
-        .select('*')
-        .eq('verification_status', 'pending')
+        .select(`*, assigned_officer:assigned_officer_id (id, name, badge_number, status, current_location)`)
+        .in('verification_status', ['pending', 'approved'])
         .order('created_at', { ascending: false });
 
       if (reportsError) throw reportsError;
 
       // Then fetch user profiles for those reports
       if (reportsData && reportsData.length > 0) {
-        const userIds = [...new Set(reportsData.map(r => r.user_id))];
+        const userIds = [...new Set(reportsData.map((r: any) => r.user_id))];
         
         const { data: profiles, error: profilesError } = await supabase
           .from('user_profile')
@@ -94,19 +100,24 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
           return acc;
         }, {});
 
-        const enrichedReports = reportsData.map(report => ({
+        const enrichedReports = reportsData.map((report: any) => ({
           ...report,
           user_profile: profileMap[report.user_id] || {}
         }));
 
         setReports(enrichedReports);
-        onUpdate(enrichedReports.length);
+        // Notify parent with count of pending only
+        const pendingCount = enrichedReports.filter((r: any) => r.verification_status === 'pending').length;
+        onUpdate(pendingCount);
+        return enrichedReports;
       } else {
         setReports([]);
         onUpdate(0);
+        return [];
       }
     } catch (error) {
       console.error('Error fetching pending reports:', error);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -128,8 +139,14 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
       if (error) throw error;
 
       // Refresh the list
-      await fetchPendingReports();
-      setSelectedReport(null);
+      const updatedReports = await fetchPendingReports();
+      // If approved, keep the modal open and update selectedReport with latest values so admin can assign
+      if (action === 'approved') {
+        const updated = updatedReports?.find((r: any) => r.id === reportId);
+        if (updated) setSelectedReport(updated as any);
+      } else {
+        setSelectedReport(null);
+      }
     } catch (error) {
       console.error('Error verifying report:', error);
       alert('Failed to process report. Please try again.');
@@ -208,6 +225,9 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold border uppercase ${getPriorityColor(report.priority)}`}>
                         {report.priority}
                       </span>
+                      <span className={`ml-2 px-2 py-1 rounded-full text-xs font-semibold ${report.verification_status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                        {report.verification_status.toUpperCase()}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -231,17 +251,27 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
 
                     <p className="text-slate-300 mt-3 line-clamp-2">{report.description}</p>
 
-                    <div className="flex gap-2 mt-3">
-                      {report.witness_available && (
-                        <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded">
-                          Witness Available
-                        </span>
-                      )}
-                      {report.evidence_available && (
-                        <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded">
-                          Evidence Available
-                        </span>
-                      )}
+                    <div className="flex gap-2 mt-3 items-center">
+                      <div className="flex gap-2">
+                        {report.witness_available && (
+                          <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded">
+                            Witness Available
+                          </span>
+                        )}
+                        {report.evidence_available && (
+                          <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded">
+                            Evidence Available
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="ml-auto text-sm text-slate-300">
+                        {report.assigned_officer ? (
+                          <span className="font-semibold">Assigned: {report.assigned_officer.name}</span>
+                        ) : (
+                          <span className="text-slate-400">Unassigned</span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -274,6 +304,7 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
                     <button
                       onClick={() => setSelectedReport(null)}
                       className="text-slate-400 hover:text-white"
+                      title="Close report details"
                     >
                       <XCircle className="w-6 h-6" />
                     </button>
@@ -331,8 +362,23 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
                     </div>
                   </div>
 
-                  {/* Additional Info */}
+                  {/* Assignment & Additional Info */}
                   <div>
+                    <h3 className="text-lg font-semibold text-white mb-3">Assignment</h3>
+                    {selectedReport.assigned_officer ? (
+                      <div className="bg-white/5 p-4 rounded-lg mb-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-white font-semibold">{selectedReport.assigned_officer.name}</div>
+                            <div className="text-slate-400 text-sm">Badge: {selectedReport.assigned_officer.badge_number} • {selectedReport.assigned_officer.current_location}</div>
+                          </div>
+                          <div className="text-sm text-slate-300">Status: {selectedReport.assigned_officer.status}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-slate-300 mb-4">No officer assigned yet. You can approve then assign an officer.</div>
+                    )}
+
                     <h3 className="text-lg font-semibold text-white mb-3">Additional Information</h3>
                     <div className="flex gap-4">
                       <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${selectedReport.witness_available ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>

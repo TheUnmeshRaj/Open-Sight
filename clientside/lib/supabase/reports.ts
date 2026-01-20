@@ -142,6 +142,20 @@ export async function getReportsByDistrict(district: string) {
   return data;
 }
 
+export async function getUnassignedReports() {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from('crime_reports')
+    .select(`*, assigned_officer:assigned_officer_id (id, name, badge_number, status, current_location)`)
+    .is('assigned_officer_id', null)
+    .in('verification_status', ['pending', 'approved'])
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
 export async function updateReportStatus(
   reportId: string,
   status: "pending" | "investigating" | "resolved" | "closed"

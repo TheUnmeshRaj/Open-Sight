@@ -18,6 +18,7 @@ export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState<"reports" | "officers" | "stats">("reports");
   const [pendingCount, setPendingCount] = useState(0);
+  const [availableOfficersCount, setAvailableOfficersCount] = useState(0);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -54,7 +55,7 @@ export default function AdminPage() {
 
         setPendingCount(count || 0);
 
-        // Subscribe to real-time updates for pending count
+        // Subscribe to real-time updates for pending count and officers
         const channel = supabase
           .channel('admin-pending-count')
           .on(
@@ -62,8 +63,7 @@ export default function AdminPage() {
             {
               event: '*',
               schema: 'public',
-              table: 'crime_reports',
-              filter: 'verification_status=eq.pending'
+              table: 'crime_reports'
             },
             () => {
               // Refetch count when reports change
@@ -76,7 +76,33 @@ export default function AdminPage() {
                 });
             }
           )
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'officers'
+            },
+            () => {
+              // Refetch available officers
+              supabase
+                .from('officers')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'available')
+                .then(({ count }) => {
+                  setAvailableOfficersCount(count || 0);
+                });
+            }
+          )
           .subscribe();
+
+        // Initial fetch for available officers
+        const { count: availCount } = await supabase
+          .from('officers')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'available');
+
+        setAvailableOfficersCount(availCount || 0);
 
         return () => {
           supabase.removeChannel(channel);
@@ -134,7 +160,7 @@ export default function AdminPage() {
                 <Users className="w-8 h-8 text-blue-400" />
                 <div>
                   <p className="text-slate-300 text-sm">Active Officers</p>
-                  <p className="text-3xl font-bold text-white">2</p>
+                  <p className="text-3xl font-bold text-white">{availableOfficersCount}</p>
                 </div>
               </div>
             </div>

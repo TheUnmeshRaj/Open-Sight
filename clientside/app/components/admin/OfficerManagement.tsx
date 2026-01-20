@@ -19,6 +19,9 @@ export default function OfficerManagement() {
   const [loading, setLoading] = useState(true);
   const [selectedOfficer, setSelectedOfficer] = useState<Officer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignReports, setAssignReports] = useState<any[]>([]);
+  const [addForm, setAddForm] = useState({ name: '', badge_number: '', unit: '', current_location: '', phone: '' });
 
   useEffect(() => {
     fetchOfficers();
@@ -28,49 +31,22 @@ export default function OfficerManagement() {
       const supabase = createClient();
       const channel = supabase
         .channel('officers-updates', { config: { broadcast: { self: true } } })
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'officers'
-          },
-          (payload) => {
-            console.log('New officer:', payload.new);
-            fetchOfficers();
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'officers'
-          },
-          (payload) => {
-            console.log('Officer updated:', payload.new);
-            fetchOfficers();
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'officers'
-          },
-          (payload) => {
-            console.log('Officer deleted:', payload.old);
-            fetchOfficers();
-          }
-        )
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'officers' }, (payload) => {
+          fetchOfficers();
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'officers' }, (payload) => {
+          fetchOfficers();
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'officers' }, (payload) => {
+          fetchOfficers();
+        })
         .subscribe();
 
       return channel;
     };
 
-    let channel: any;
-    setupSubscription().then(ch => {
+    let channel: any = null;
+    setupSubscription().then((ch: any) => {
       channel = ch;
     });
 
@@ -84,6 +60,7 @@ export default function OfficerManagement() {
 
   const fetchOfficers = async () => {
     try {
+      setLoading(true);
       const supabase = createClient();
       const { data, error } = await supabase
         .from('officers')
@@ -97,6 +74,61 @@ export default function OfficerManagement() {
       console.error('Error fetching officers:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddOfficer = async () => {
+    try {
+      const { name, badge_number, unit, current_location, phone } = addForm;
+      if (!name || !badge_number || !unit) {
+        alert('Name, badge number and unit are required');
+        return;
+      }
+
+      const { data } = await (await import('@/lib/supabase/officers')).addOfficer({
+        name,
+        badge_number,
+        unit,
+        status: 'available',
+        last_assignment: new Date().toISOString(),
+        current_location: current_location || 'Unknown',
+        phone
+      });
+
+      setAddForm({ name: '', badge_number: '', unit: '', current_location: '', phone: '' });
+      setShowAddModal(false);
+      await fetchOfficers();
+      alert(`Officer ${data.name} added.`);
+    } catch (err) {
+      console.error('Add officer error:', err);
+      alert('Failed to add officer. Check console.');
+    }
+  };
+
+  const openAssignModal = async (officer: Officer) => {
+    setSelectedOfficer(officer);
+    try {
+      const reports = await (await import('@/lib/supabase/reports')).getUnassignedReports();
+      setAssignReports(reports || []);
+      setShowAssignModal(true);
+    } catch (err) {
+      console.error('Failed to fetch unassigned reports:', err);
+      alert('Unable to load reports.');
+    }
+  };
+
+  const handleAssignToReport = async (reportId: string) => {
+    if (!selectedOfficer) return;
+
+    try {
+      const { report, officer } = await (await import('@/lib/supabase/reports')).assignOfficerToReport(reportId, selectedOfficer.id);
+      setShowAssignModal(false);
+      setSelectedOfficer(null);
+      await fetchOfficers();
+      alert(`Assigned ${officer.name} to the report.`);
+    } catch (err) {
+      console.error('Assign error:', err);
+      alert('Failed to assign officer.');
     }
   };
 
@@ -259,7 +291,7 @@ export default function OfficerManagement() {
             <div className="flex gap-2">
               {officer.status === 'available' ? (
                 <button
-                  onClick={() => handleStatusUpdate(officer.id, 'on_call')}
+                  onClick={() => openAssignModal(officer)}
                   className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-semibold transition-all text-sm"
                 >
                   Assign
@@ -308,6 +340,64 @@ export default function OfficerManagement() {
           </button>
         </div>
       )}
+
+      {/* Add Officer Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl max-w-xl w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white">Add Officer</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white" title="Close add officer modal">Close</button>
+            </div>
+
+            <div className="space-y-3">
+              <input className="w-full p-3 rounded bg-slate-700 text-white" placeholder="Full name" value={addForm.name} onChange={(e) => setAddForm((s) => ({ ...s, name: e.target.value }))} />
+              <input className="w-full p-3 rounded bg-slate-700 text-white" placeholder="Badge number" value={addForm.badge_number} onChange={(e) => setAddForm((s) => ({ ...s, badge_number: e.target.value }))} />
+              <input className="w-full p-3 rounded bg-slate-700 text-white" placeholder="Unit" value={addForm.unit} onChange={(e) => setAddForm((s) => ({ ...s, unit: e.target.value }))} />
+              <input className="w-full p-3 rounded bg-slate-700 text-white" placeholder="Current location" value={addForm.current_location} onChange={(e) => setAddForm((s) => ({ ...s, current_location: e.target.value }))} />
+              <input className="w-full p-3 rounded bg-slate-700 text-white" placeholder="Phone (optional)" value={addForm.phone} onChange={(e) => setAddForm((s) => ({ ...s, phone: e.target.value }))} />
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button onClick={() => setShowAddModal(false)} className="px-4 py-2 rounded bg-gray-600 text-white">Cancel</button>
+                <button onClick={handleAddOfficer} className="px-4 py-2 rounded bg-emerald-500 text-white">Add Officer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign To Report Modal */}
+      {showAssignModal && selectedOfficer && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl max-w-3xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b border-white/10 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-white">Assign {selectedOfficer.name} to a Report</h3>
+              <button onClick={() => { setShowAssignModal(false); setSelectedOfficer(null); }} className="text-slate-400 hover:text-white" title="Close assign modal">Close</button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {assignReports.length === 0 ? (
+                <div className="text-center py-12 text-slate-300">No unassigned reports available.</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {assignReports.map((r) => (
+                    <div key={r.id} className="bg-white/5 rounded-lg p-4 flex items-center justify-between">
+                      <div>
+                        <div className="text-white font-semibold">{r.crime_type.replace('_', ' ')} <span className="text-slate-400 text-sm">• {r.location}</span></div>
+                        <div className="text-slate-400 text-sm">{r.reporter_name || r.user_profile?.full_name || 'Anonymous'} • {new Date(r.created_at).toLocaleString()}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleAssignToReport(r.id)} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded font-semibold">Assign</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
