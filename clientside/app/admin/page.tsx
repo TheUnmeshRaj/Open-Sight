@@ -19,6 +19,12 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<"reports" | "officers" | "stats">("reports");
   const [pendingCount, setPendingCount] = useState(0);
   const [availableOfficersCount, setAvailableOfficersCount] = useState(0);
+  // Controls for reports list (filter, sort, search)
+  const [reportFilter, setReportFilter] = useState<'all' | 'pending' | 'approved'>('pending');
+  const [sortBy, setSortBy] = useState<'created_at' | 'priority'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [searchQuery, setSearchQuery] = useState('');
+
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -226,7 +232,43 @@ export default function AdminPage() {
         </div>
 
         <div className="mt-6">
-          {activeTab === "reports" && <PendingReports onUpdate={(count) => setPendingCount(count)} />}
+          {activeTab === "reports" && (
+            <>
+              <div className="text-white flex items-center gap-3 mb-4">
+                <select aria-label="Filter reports" value={reportFilter} onChange={(e) => setReportFilter(e.target.value as any)} className="bg-slate-800/40 text-white p-2 rounded border border-white/20 appearance-none focus:outline-none focus:ring-0 backdrop-blur-sm px-3">
+                  <option value="all">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                </select>
+
+                <select aria-label="Sort by" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="bg-slate-800/40 text-white p-2 rounded border border-white/20 appearance-none focus:outline-none focus:ring-0 backdrop-blur-sm px-3">
+                  <option value="created_at">Newest</option>
+                  <option value="priority">Priority</option>
+                </select>
+
+                <select aria-label="Sort order" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as any)} className="bg-slate-800/40 text-white p-2 rounded border border-white/20 appearance-none focus:outline-none focus:ring-0 backdrop-blur-sm px-3">
+                  <option value="desc">Desc</option>
+                  <option value="asc">Asc</option>
+                </select>
+
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search reports..."
+                  className="bg-slate-800/30 text-white p-2 rounded flex-1 border border-white/10 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+                />
+              </div>
+
+              <PendingReports
+                onUpdate={(count) => setPendingCount(count)}
+                filterStatus={reportFilter}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                searchQuery={searchQuery}
+              />
+            </>
+          )}
+
           {activeTab === "officers" && <OfficerManagement />}
           {activeTab === "stats" && <AdminStats />}
         </div>

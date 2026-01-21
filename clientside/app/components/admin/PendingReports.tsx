@@ -35,9 +35,13 @@ interface CrimeReport {
 
 interface PendingReportsProps {
   onUpdate: (count: number) => void;
+  filterStatus?: 'all' | 'pending' | 'approved';
+  sortBy?: 'created_at' | 'priority';
+  sortOrder?: 'asc' | 'desc';
+  searchQuery?: string;
 }
 
-export default function PendingReports({ onUpdate }: PendingReportsProps) {
+export default function PendingReports({ onUpdate, filterStatus = 'all', sortBy = 'created_at', sortOrder = 'desc', searchQuery = '' }: PendingReportsProps) {
   const [reports, setReports] = useState<CrimeReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReport, setSelectedReport] = useState<CrimeReport | null>(null);
@@ -68,18 +72,34 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+    // Re-run when filter/sort/search change
+  }, [filterStatus, sortBy, sortOrder, searchQuery]);
 
   const fetchPendingReports = async () => {
     try {
       const supabase = createClient();
       
-      // First fetch reports with user IDs; include both pending and approved (so approved-but-unassigned stays visible)
-      const { data: reportsData, error: reportsError } = await supabase
+      // Build query based on filter and sort
+      let query: any = supabase
         .from('crime_reports')
-        .select(`*, assigned_officer:assigned_officer_id (id, name, badge_number, status, current_location)`)
-        .in('verification_status', ['pending', 'approved'])
-        .order('created_at', { ascending: false });
+        .select(`*, assigned_officer:assigned_officer_id (id, name, badge_number, status, current_location)`);
+
+      if (filterStatus === 'pending') {
+        query = query.eq('verification_status', 'pending');
+      } else if (filterStatus === 'approved') {
+        query = query.eq('verification_status', 'approved');
+      } else {
+        query = query.in('verification_status', ['pending', 'approved']);
+      }
+
+      // Server side ordering for created_at; priority will be done client-side
+      if (sortBy === 'created_at') {
+        query = query.order('created_at', { ascending: sortOrder === 'asc' });
+      } else {
+        // fetch without ordering if we'll apply custom ordering client-side
+      }
+
+      const { data: reportsData, error: reportsError } = await query;
 
       if (reportsError) throw reportsError;
 
@@ -100,13 +120,37 @@ export default function PendingReports({ onUpdate }: PendingReportsProps) {
           return acc;
         }, {});
 
-        const enrichedReports = reportsData.map((report: any) => ({
+        let enrichedReports = reportsData.map((report: any) => ({
           ...report,
           user_profile: profileMap[report.user_id] || {}
         }));
 
+        // Apply search query filter client-side
+        const q = (searchQuery || '').trim().toLowerCase();
+        if (q) {
+          enrichedReports = enrichedReports.filter((r: any) => {
+            return (
+              (r.description || '').toLowerCase().includes(q) ||
+              (r.crime_type || '').toLowerCase().includes(q) ||
+              (r.user_profile?.full_name || '').toLowerCase().includes(q) ||
+              (r.location || '').toLowerCase().includes(q) ||
+              (r.district || '').toLowerCase().includes(q)
+            );
+          });
+        }
+
+        // Apply priority sort client-side if requested
+        if (sortBy === 'priority') {
+          const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+          enrichedReports.sort((a: any, b: any) => {
+            const pa = priorityOrder[a.priority] ?? 3;
+            const pb = priorityOrder[b.priority] ?? 3;
+            return (pa - pb) * (sortOrder === 'asc' ? 1 : -1);
+          });
+        }
+
         setReports(enrichedReports);
-        // Notify parent with count of pending only
+        // Notify parent with count of pending only (even when filter is different)
         const pendingCount = enrichedReports.filter((r: any) => r.verification_status === 'pending').length;
         onUpdate(pendingCount);
         return enrichedReports;
