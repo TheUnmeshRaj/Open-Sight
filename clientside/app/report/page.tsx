@@ -237,7 +237,7 @@ export default function ReportPage() {
 
               <div>
                 <label htmlFor="district" className="block text-sm font-semibold text-slate-900 mb-2">
-                  District <span className="text-red-500">*</span>
+                  Area <span className="text-red-500">*</span>
                 </label>
                 <select
                   id="district"
@@ -247,7 +247,7 @@ export default function ReportPage() {
                   required
                   className="w-full border-2 border-slate-300 rounded-lg px-4 py-3 bg-slate-50 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 hover:bg-slate-100 transition-all"
                 >
-                  <option value="">Select district</option>
+                  <option value="">Select area</option>
                   <option value="koramangala">Koramangala</option>
                   <option value="whitefield">Whitefield</option>
                   <option value="indiranagar">Indiranagar</option>

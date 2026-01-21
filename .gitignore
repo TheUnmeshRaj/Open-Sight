@@ -15,6 +15,7 @@ env/
 ModelWeights/
 Datasets/
 docs/
+latex/
 
 # Build outputs
 .next/
