@@ -6,11 +6,11 @@ scikit-learn
 pydeck
 geopy
 streamlit-folium
-geopandas
-shapely
 tqdm
 tensorboardX
 folium
 matplotlib
 statsmodels
 h5py
+pmdarima
+

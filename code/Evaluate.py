@@ -91,7 +91,7 @@ def main():
         return
 
     print(f"Loading model from: {model_path}")
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model'])
 
     # Run Test

@@ -1,4 +1,4 @@
-# Luohao Xu edsml-lx122
+
 
 import os
 import torch
@@ -14,16 +14,64 @@ warnings.filterwarnings("ignore")
 from tqdm import tqdm
 from datetime import datetime, timedelta
 from streamlit_folium import folium_static
-from geopandas import GeoDataFrame
-from shapely.geometry import Point
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 
 import config
 from LSTMModel import ConvLSTMModel
 from DataPreprocessing import DataPreprocessing
-from WeatherModel import WeatherModel
+# from WeatherModel import WeatherModel
 from TimeseriesModel import TimeseriesModel
+import requests
+
+@st.cache_resource
+def download_model(force=False):
+    """
+    Download model weights from Google Drive.
+    Robustly handles LFS pointers, missing files, and corruption.
+    """
+    model_path = config.MODEL_WEIGHTS_PATH
+    
+    # 1. Determine if download is needed
+    needs_download = force
+    if not os.path.exists(model_path):
+        print(f"File {model_path} missing. Downloading...")
+        needs_download = True
+    elif os.path.getsize(model_path) < 2048:
+        print(f"File {model_path} implies LFS pointer (size {os.path.getsize(model_path)} bytes). Downloading real weights...")
+        needs_download = True
+
+    if needs_download:
+        if os.path.exists(model_path):
+             os.remove(model_path) # Clean start
+             
+        # Hugging Face direct download (much simpler than GDrive)
+        url = "https://huggingface.co/aaditya752/crimedetection/resolve/main/BestModel.pt"
+        
+        print(f"Downloading model from Hugging Face...")
+        try:
+            response = requests.get(url, stream=True)
+            response.raise_for_status()  # Raise error if download fails
+                
+            with open(model_path, "wb") as f:
+                for chunk in response.iter_content(32768):
+                    if chunk:
+                        f.write(chunk)
+            
+            # Verify Download
+            file_size = os.path.getsize(model_path)
+            if file_size < 100_000_000:  # Expect at least 100MB
+                 raise Exception(f"Downloaded file is too small ({file_size} bytes). Expected ~385MB.")
+                 
+            print(f"Model downloaded successfully ({file_size / 1_000_000:.1f}MB)")
+            
+        except Exception as e:
+            print(f"Download FAILED: {e}")
+            if os.path.exists(model_path):
+                os.remove(model_path) # Don't leave junk
+            raise e
+    else:
+        print("Model found locally and appears valid.")
 
 @st.cache_data
 def get_location_coordinates(place_name):
@@ -90,8 +138,17 @@ def loadLSTMModel():
     """
     print('Loading ConvLSTM Model')
     # model_save_path = projectDir + '/Data/ModelWeights' + f'/BestModel__bs-({config.TRAIN_BATCH_SIZE})_threshold-({config.CLASS_THRESH})_weights-({config.BCE_WEIGHTS}).pt'
-    model_save_path = projectDir + '/Data/ModelWeights/BestModel.pt'
-    model = torch.load(model_save_path, map_location=torch.device(device) )
+    model_save_path = config.MODEL_WEIGHTS_PATH
+    
+    try:
+        model = torch.load(model_save_path, map_location=torch.device(device), weights_only=False)
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("Model file might be corrupt or an LFS pointer. Re-downloading...")
+        download_model(force=True)
+        # Try again after download
+        model = torch.load(model_save_path, map_location=torch.device(device), weights_only=False)
+
     LSTM_model = ConvLSTMModel(input_dim=config.CRIME_TYPE_NUM, hidden_dim=config.HIDDEN_DIM, kernel_size=config.KERNEL_SIZE, bias=True)
     LSTM_model.load_state_dict(model['model'])
     return LSTM_model
@@ -116,7 +173,7 @@ def loadTimeseriesModel(crimeData):
     print('Loading Timeseries Model')
     return TimeseriesModel(projectDir, crimeData)
 
-def getPredDataByDate(date, LSTMModel, weatherModel, timeseriesModel, dataPivot, features, labels):
+def getPredDataByDate(date, LSTMModel, timeseriesModel, dataPivot, features, labels):
     """
     Function to get predicted data by using those three models
 
@@ -130,34 +187,50 @@ def getPredDataByDate(date, LSTMModel, weatherModel, timeseriesModel, dataPivot,
     """
 
     dt = datetime.strptime(date[1:-1], '%Y-%m-%d')
-    if (dt <= left_limit):
-        print(f"Please choose date after {start_date}.", end=" ")
-        print("The crime data before that date is not applied due to limited computing resources.")
-        return 0
-    elif (dt > right_limit):
-        print(f"Please choose data before {right_limit}.")
-        print("Currently the model can not access future data for prediction.(Use data of last 12 days to predict on that day)")
-        return 0
+    # Future Date Handling:
+    # If the date is beyond our dataset, we switch to "Simulation Mode".
+    # We use the LAST available 12-day window as the "Trend Context".
     
-    # determine if the input date is valid for prediction
+    # Calculate the theoretical index
     minus_days = config.SEQ_LEN + 1
     if (dataPivot.query(f"date < {config.START_DATE}").shape[0] == 0):
         startIndex = 0
     else:
         startIndex = int(dataPivot.query(f"date < {config.START_DATE}").shape[0] / config.CRIME_TYPE_NUM - minus_days)
     
-    # get input feature and true labels
-    found_index = int(dataPivot.query(f"date < {date}").shape[0] / config.CRIME_TYPE_NUM - minus_days) - startIndex
-    labels_by_date = labels[found_index]
+    theoretical_index = int(dataPivot.query(f"date < {date}").shape[0] / config.CRIME_TYPE_NUM - minus_days) - startIndex
+    
+    # Check if we are in the future (index out of bounds)
+    is_future = False
+    if theoretical_index >= len(features):
+        is_future = True
+        found_index = len(features) - 1  # Clamp to last available day
+        print(f"Future Date Detected ({date}). Using last available data context.")
+    else:
+        found_index = theoretical_index
+
+    # Get features (Context)
     features_by_date = features[found_index]
+    
+    # Get labels (Truth) - Only if not future
+    if is_future:
+        labels_by_date = None # No truth for future
+    else:
+        labels_by_date = labels[found_index]
     
     # get pred from ConvLSTM
     processed_features = torch.from_numpy(features_by_date).to(device).unsqueeze(0).float()
     pred_data = LSTMModel(processed_features)[0][0]
     
-    getWeatherFactor = weatherModel.getWeatherFactor(date[1:-1])
-    getTimeseriesFactor = [timeseriesModel.getTimeseriesFactor(crime_name, date[1:-1]) for crime_name in crimeType]
-    
+    # Weather & Timeseries Factor Handling
+    # Weather Model Disabled by User Request (No Data)
+    getWeatherFactor = 1.0 
+        
+    try:
+        getTimeseriesFactor = [timeseriesModel.getTimeseriesFactor(crime_name, date[1:-1]) for crime_name in crimeType]
+    except:
+        getTimeseriesFactor = [1.0] * len(crimeType) # Default if AR model fails
+
     return pred_data, labels_by_date, getWeatherFactor, getTimeseriesFactor
 
 def getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold, temporal_factor = True):
@@ -183,7 +256,8 @@ def getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, t
                 if temporal_factor:
                     weight = weight * getWeatherFactor * getTimeseriesFactor[type_num]
                 if pred_data[type_num][x][y] < threshold:
-                    weight = weight * config.MULTIPLY_FACTOR
+                    weight = 0  # Hard cutoff - hide predictions below confidence threshold
+                #    weight = weight * config.MULTIPLY_FACTOR
                     
                 lat = config.LAT_BINS[x] + config.DIFF_LAT
                 lon = config.LON_BINS[y] + config.DIFF_LON
@@ -214,9 +288,13 @@ def run():
     # load NYC shape and datasets
     NYCShape = loadNYCShape()
     features, labels, dataPivot, crimeData = loadDataset()
+    
+    # Download weights if missing (Bypass LFS)
+    download_model()
+    
     # load models
     LSTMModel = loadLSTMModel()
-    weatherModel = loadWeatherModel()
+    # weatherModel = loadWeatherModel() # Disabled
     timeseriesModel = loadTimeseriesModel(crimeData)
 
     # limited by timeseries model
@@ -229,13 +307,14 @@ def run():
         st.session_state['view_lon'] = (config.LON_MIN + config.LON_MAX) / 2
         st.session_state['view_zoom'] = 10
 
-    with st.sidebar:
-        st.write("## Mode Selection")
-        app_mode = st.radio("Choose Mode:", ["Prediction Model", "Cumulative Heatmap (All Data)"])
-        st.write("---")
-        
-        st.write("## 🔍 Search Location")
-        search_query = st.text_input("Enter place name (e.g. Indiranagar)")
+    # --- Top Navigation & Controls ---
+    
+    # Create 3 columns for controls
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("#### 📍 Location & Date")
+        search_query = st.text_input("Search (e.g. Indiranagar)")
         if search_query:
             coords = get_location_coordinates(search_query)
             if coords:
@@ -245,140 +324,73 @@ def run():
                 st.session_state['view_zoom'] = 14
                 st.success(f"Found: {search_query}")
             else:
-                st.error("Location not found in Bengaluru")
-        st.write("---")
+                st.error("Not found")
+                
+        dateChosen = st.date_input("Date:", min_value=startDate, max_value=endDate, value=startDate)
+        dataChosenStr = dateChosen.strftime('%Y-%m-%d')
+        inputDate = f"\'{dataChosenStr}\'"
 
-        # Visualization Style
-        st.write("## 🎨 Map Style")
-        vis_type = st.radio("Choose Style:", ["Heatmap (2D)", "Hexagon (3D)"])
-        st.write("---")
+    with col2:
+        st.write("#### ⚙️ Settings")
+        vis_type = st.radio("Map Style:", ["Heatmap (2D)", "Hexagon (3D)"], horizontal=True)
+        threshold = st.slider("Threshold:", 0.0, 1.0, 0.5)
 
-    if app_mode == "Prediction Model":
-        # Input parameters in the sidebar
-        with st.sidebar:
-            st.sidebar.write("Choose Parameters for Prediction")
-            with st.form("my_form"):
-                # select data in the given range
-                dateChosen = st.date_input("Choose date:",  min_value=startDate, max_value=endDate, value=startDate)
-                dataChosenStr = dateChosen.strftime('%Y-%m-%d')
-                inputDate = f"\'{dataChosenStr}\'"
-
-                # select one of eight crime type
-                typeChosen = st.radio("Select crime type:", crimeType)
-                type_num = crimeType.index(typeChosen)
-
-                # select threshold for prediction
-                threshold = st.select_slider("Adjust threshold:", options=[i/100 for i in range(1,100)])
-                # button for start processing prediction
-                submitted = st.form_submit_button("Predict")
+    with col3:
+        st.write("#### � Analysis")
+        # Single channel model, only supports aggregated crime prediction
+        typeChosen = "Aggregated Crime"
+        type_num = 0 
         
-        # default map when initializing
-        if not submitted:
-            st.write()
-            "👈 👈 👈 Please choose parameters for prediction"
-            st.pydeck_chart(pdk.Deck(
-                map_style=None,
-                initial_view_state=pdk.ViewState(
-                    longitude = st.session_state['view_lon'],
-                    latitude = st.session_state['view_lat'],
-                    zoom = st.session_state['view_zoom'],
-                    pitch=50,
-                ),
-                layers=[]
-            ))
+        st.write("") # Spacer for alignment
+        st.write("") 
+        submitted = st.button("Predict Heatmap", type="primary", use_container_width=True)
 
-        # plot 3d interactive map by using pydeck_chart
-        if submitted:
-            st.write()
-            # show selected parameters
-            'You selected: ', typeChosen, 'on date ', dateChosen, 'with threshold of ', threshold
-            'Prediction Results: '
-            pred_data, real_data, getWeatherFactor, getTimeseriesFactor = getPredDataByDate(inputDate, LSTMModel, weatherModel, timeseriesModel, dataPivot, features, labels)
-            chart_data = getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold)
-            if vis_type == "Hexagon (3D)":
-                layer = pdk.Layer(
-                    'HexagonLayer',
-                    data=chart_data,
-                    get_position='[lon, lat]',
-                    radius=400,
-                    elevation_scale=1,
-                    elevation_range=[0, 8000],
-                    auto_highlight=True,
-                    pickable=True,
-                    extruded=True,
-                    opacity=0.6,
-                )
-            else:
-                layer = pdk.Layer(
-                    'HeatmapLayer',
-                    data=chart_data,
-                    get_position='[lon, lat]',
-                    opacity=0.9,
-                    radiusPixels=50,
-                )
+    st.divider()
 
-            st.pydeck_chart(pdk.Deck(
-                map_style=None,
-                initial_view_state=pdk.ViewState(
-                    longitude = st.session_state['view_lon'],
-                    latitude = st.session_state['view_lat'],
-                    zoom = st.session_state['view_zoom'],
-                    pitch=40 if vis_type == "Hexagon (3D)" else 0,
-                ),
-                layers=[layer],
-            ))
+    # --- Logic ---
+    if not submitted:
+        # Default view
+        st.pydeck_chart(pdk.Deck(
+            map_style='light',
+            initial_view_state=pdk.ViewState(
+                longitude = st.session_state['view_lon'],
+                latitude = st.session_state['view_lat'],
+                zoom = st.session_state['view_zoom'],
+                pitch=50,
+            ),
+            layers=[]
+        ))
 
-    elif app_mode == "Cumulative Heatmap (All Data)":
-        st.write("## 🗺️ Cumulative Crime Heatmap")
+    if submitted:
+        st.info(f"Predicting **{typeChosen}** for **{dateChosen}** (Threshold: {threshold})")
         
-        # Get unique crime types from the dataset
-        all_crime_types = sorted(crimeData['TYPE'].unique().tolist())
+        pred_data, real_data, getWeatherFactor, getTimeseriesFactor = getPredDataByDate(inputDate, LSTMModel, timeseriesModel, dataPivot, features, labels)
+        chart_data = getHexagonData(pred_data, getWeatherFactor, getTimeseriesFactor, NYCShape, type_num, threshold)
         
-        with st.sidebar:
-            st.write("## 🕸️ Filter Data")
-            selected_types = st.multiselect(
-                "Select Crime Types:",
-                options=all_crime_types,
-                default=all_crime_types
-            )
-            st.write("---")
-
-        st.write(f"Displaying {len(selected_types)} crime types within configured bounds.")
-        
-        # Filter raw data based on config bounds AND selected types
-        df_display = crimeData[
-            (crimeData['Longitude'] >= config.LON_MIN) & (crimeData['Longitude'] <= config.LON_MAX) &
-            (crimeData['Latitude'] >= config.LAT_MIN) & (crimeData['Latitude'] <= config.LAT_MAX) &
-            (crimeData['TYPE'].isin(selected_types))
-        ]
-        
-        st.write(f"**Total Points Displayed:** {len(df_display)}")
-
         if vis_type == "Hexagon (3D)":
             layer = pdk.Layer(
                 'HexagonLayer',
-                data=df_display,
-                get_position='[Longitude, Latitude]',
-                radius=200,
-                elevation_scale=4,
-                elevation_range=[0, 3000],
+                data=chart_data,
+                get_position='[lon, lat]',
+                radius=400,
+                elevation_scale=1,
+                elevation_range=[0, 8000],
                 auto_highlight=True,
                 pickable=True,
                 extruded=True,
-                coverage=1,
-                opacity=0.6
+                opacity=0.6,
             )
         else:
             layer = pdk.Layer(
                 'HeatmapLayer',
-                data=df_display,
-                get_position='[Longitude, Latitude]',
+                data=chart_data,
+                get_position='[lon, lat]',
                 opacity=0.9,
-                radiusPixels=30,
+                radiusPixels=50,
             )
-
+        
         st.pydeck_chart(pdk.Deck(
-            map_style=None,
+            map_style='light',
             initial_view_state=pdk.ViewState(
                 longitude = st.session_state['view_lon'],
                 latitude = st.session_state['view_lat'],
@@ -388,8 +400,135 @@ def run():
             layers=[layer],
         ))
 
+    # Legacy cumulative logic moved to separate function
+    return
+
+def run_cumulative_map():
+    """
+    Cumulative Map Page - Shows all historical crime data
+    """
+    
+    # Load RAW crime data directly from CSV
+    csv_path = config.PROJECT_DIR + "/Data/Datasets/" + config.DATASET_FILENAME
+    crimeData = pd.read_csv(csv_path)
+    
+    # Identify the correct column for crime type
+    type_col = 'crime_type' if 'crime_type' in crimeData.columns else 'TYPE'
+    
+    if type_col not in crimeData.columns:
+        st.error(f"Column '{type_col}' not found in dataset")
+        return
+
+    # Filter valid coordinates within Bengaluru bounds FIRST
+    crimeData = crimeData.dropna(subset=['Latitude', 'Longitude'])
+    crimeData = crimeData[
+        (crimeData['Latitude'] >= config.LAT_MIN) & (crimeData['Latitude'] <= config.LAT_MAX) &
+        (crimeData['Longitude'] >= config.LON_MIN) & (crimeData['Longitude'] <= config.LON_MAX)
+    ]
+    
+    if len(crimeData) == 0:
+        st.error("No valid crime data found within Bengaluru bounds")
+        return
+
+    # --- Controls ---
+    # Define Presets
+    PRESETS = {
+        "All Crimes": [], # Empty list means all
+        "👩 Women Safety": ['RAPE', 'MOLESTATION', 'DOWRY DEATHS', 'CRUELTY BY HUSBAND', 'INSULTING MODESTY OF WOMEN (EVE TEASING)', 'IMMORAL TRAFFIC', 'OFFENCES RELATED TO MARRIAGE'],
+        "👶 Child Safety": ['POCSO', 'KIDNAPPING AND ABDUCTION', 'CHILD LABOR ACT', 'EXPOSURE AND ABANDONMENT OF CHILD', 'INFANTICIDE'],
+        "📢 Public Safety": ['RIOTS', 'PUBLIC NUISANCE', 'PUBLIC SAFETY', 'ARSON', 'EXPLOSIVES', 'NEGLIGENT ACT'],
+        "🔪 Major Crimes": ['MURDER', 'ATTEMPT TO MURDER', 'CULPABLE HOMICIDE NOT AMOUNTING TO MURDER', 'ROBBERY', 'DACOITY', 'BURGLARY - DAY', 'BURGLARY - NIGHT'],
+        "🚗 Theft & Traffic": ['THEFT', 'MOTOR VEHICLE ACCIDENTS FATAL', 'MOTOR VEHICLE ACCIDENTS NON-FATAL', 'RECEIVING OF STOLEN PROPERTY']
+    }
+    
+    all_types = sorted(crimeData[type_col].unique().tolist())
+    
+    col1, col2, col3 = st.columns([1, 1, 2])
+    
+    with col1:
+        vis_type = st.radio("Map Style:", ["Heatmap (2D)", "Hexagon (3D)"], horizontal=True)
+
+    with col2:
+        preset_selection = st.selectbox("🎯 Quick Select:", list(PRESETS.keys()))
+
+    with col3:
+        # Determine default selection based on preset
+        if preset_selection == "All Crimes":
+            default_types = all_types
+        else:
+            # Filter preset list to only those that exist in dataset
+            target_types = PRESETS[preset_selection]
+            default_types = [t for t in target_types if t in all_types]
+            
+        selected_types = st.multiselect("Filter Crime Types:", all_types, default=default_types)
+    
+    st.divider()
+    
+    # Filter data by selected types
+    if selected_types:
+        df_display = crimeData[crimeData[type_col].isin(selected_types)]
+    else:
+        df_display = pd.DataFrame() # Empty if nothing selected
+
+    # Prepare for PyDeck
+    df = df_display[['Latitude', 'Longitude']].rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+
+    st.write(f"Displaying **{len(df):,}** incidents based on **{len(selected_types)}** selected types.")
+
+
+    
+    # Create map layer
+    if vis_type == "Heatmap (2D)":
+        layer = pdk.Layer(
+            "HeatmapLayer",
+            data=df,
+            get_position='[lon, lat]',
+            opacity=0.9,
+            radiusPixels=30,
+        )
+    else:  # Hexagon 3D
+        layer = pdk.Layer(
+            "HexagonLayer",
+            data=df,
+            get_position='[lon, lat]',
+            radius=200,
+            elevation_scale=4,
+            elevation_range=[0, 3000],
+            auto_highlight=True,
+            pickable=True,
+            extruded=True,
+            coverage=1,
+            opacity=0.6,
+        )
+    
+    # Render map
+    st.pydeck_chart(pdk.Deck(
+        map_style='light',
+        initial_view_state=pdk.ViewState(
+            latitude=config.LAT_MIN + (config.LAT_MAX - config.LAT_MIN) / 2,
+            longitude=config.LON_MIN + (config.LON_MAX - config.LON_MIN) / 2,
+            zoom=10.5,
+            pitch=40 if vis_type == "Hexagon (3D)" else 0,
+        ),
+        layers=[layer],
+    ))
+    
+    st.info(f"📊 Total Incidents: {len(df):,}")
+
 if __name__ == "__main__":
-    run()
+    # Get page parameter from URL (backward compatible)
+    try:
+        params = st.query_params
+        page = params.get("page", "dashboard")
+    except AttributeError:
+        # Older Streamlit version
+        params = st.experimental_get_query_params()
+        page = params.get("page", ["dashboard"])[0]
+    
+    if page == "home":
+        run_cumulative_map()
+    else:  # dashboard or any other value
+        run()
 
 
 

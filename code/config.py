@@ -13,7 +13,12 @@ PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CRIME_TYPE = ["crime"]
 CRIME_TYPE_NUM = 1
 # Dataset filename (must be in Data/Datasets/)
-DATASET_FILENAME = "bengaluru_crime_post_2019_full.csv"
+# Use smaller sample for cloud deployment (faster boot)
+import os
+if os.environ.get('STREAMLIT_RUNTIME') == 'true':
+    DATASET_FILENAME = "bengaluru_crime_sample.csv"
+else:
+    DATASET_FILENAME = "bengaluru_crime_post_2019_full.csv"
 
 # -------- CHANGE THESE TO MATCH YOUR CITY --------
 # Set bounds based on your dataset min/max
@@ -35,7 +40,7 @@ SEQ_LEN = 12
 # Dates (used only for slicing, not strict)
 START_DATE = "'2019-01-01'"
 START_SELECT_DATE = "'2019-02-01'"
-END_DATE = "'2025-12-31'"
+END_DATE = "'2030-12-31'"
 TRAIN_VAL_DATE = "'2024-01-01'"
 VAL_TEST_DATE = "'2025-01-01'"
 
@@ -86,6 +91,7 @@ N_EPOCHS = 5
 
 SAVE = True
 MODEL_SAVE_PATH = PROJECT_DIR + "/Data/ModelWeights"
+MODEL_WEIGHTS_PATH = MODEL_SAVE_PATH + "/BestModel.pt"
 
 CLASS_THRESH = 0.6
 MULTIPLY_FACTOR = 0.3
