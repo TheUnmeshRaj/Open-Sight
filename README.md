@@ -1,6 +1,6 @@
 # OpenSight - Crime Hotspot Prediction System
 
-A full-stack application for predicting and visualizing crime hotspots using machine learning and spatiotemporal analysis.
+A full stack application for predicting and visualizing crime hotspots using machine learning and spatiotemporal analysis.
 
 ## Features
 
