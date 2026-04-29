@@ -1,20 +1,27 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import jsPDF from "jspdf";
+import dynamic from "next/dynamic";
+import ControlPanel from "@/app/components/ControlPanel";
 import Statistics from "@/app/components/Statistics";
-import TrendChart from "@/app/components/TrendChart";
 import NavBar from "@/app/components/NavBar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import RecentIncidents, { Incident } from "@/app/components/RecentIncidents";
 import OfficerDeployment, { Officer } from "@/app/components/OfficerDeployment";
 import WeeklyReport from "@/app/components/WeeklyReport";
-import StreamlitDashboard from "@/app/components/StreamlitDashboard";
-import { User } from "@supabase/supabase-js/dist/index.cjs";
+// Supabase removed — no auth client
 import { UserDashboard } from "@/app/components/UserDashboard";
-import { REAL_CRIME_STATS, generateRecentIncidents, generateHotspots } from "@/lib/crimeData";
+
+// Dynamically import the map component to avoid SSR issues
+const HotspotMap = dynamic(() => import("@/app/components/HotspotMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-96 bg-gradient-to-br from-slate-200 to-slate-100 rounded-lg flex items-center justify-center">
+      <LoadingSpinner size="lg" />
+    </div>
+  ),
+});
 
 interface Hotspot {
   id: string;
@@ -25,116 +32,149 @@ interface Hotspot {
 }
 
 interface Stats {
+  hotspotsCount: number;
   totalCrimes: number;
   averageRiskLevel: number;
   predictionAccuracy: number;
-  hotspotsCount: number;
   timeSeriesData?: Array<{ date: string; crimes: number; predicted: number }>;
 }
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [initializing, setInitializing] = useState(true);
+  const [user, setUser] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [hotspots, setHotspots] = useState<Hotspot[]>(generateHotspots());
+  const [city, setCity] = useState("bangalore");
+  const [threshold, setThreshold] = useState(0.5);
+  const [timeWindow, setTimeWindow] = useState("current");
+  const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [stats, setStats] = useState<Stats>({
-    totalCrimes: REAL_CRIME_STATS.totalCrimes,
-    averageRiskLevel: REAL_CRIME_STATS.arrestRate / 100,
-    predictionAccuracy: REAL_CRIME_STATS.convictionRate / 100,
-    hotspotsCount: generateHotspots().length,
+    hotspotsCount: 0,
+    totalCrimes: 0,
+    averageRiskLevel: 0,
+    predictionAccuracy: 0.85,
   });
+  const [districtFilter, setDistrictFilter] = useState("all");
+  const [incidentTypeFilter, setIncidentTypeFilter] = useState("all");
   const [userReports, setUserReports] = useState<any[]>([]);
-  const [allUserReports, setAllUserReports] = useState<any[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+  // No auth provider configured — skip authentication checks
 
-        if (!user) {
-          router.push("/login");
-        } else {
-          setUser(user);
-        }
-      } catch (err) {
-        console.error("Error checking auth:", err);
-        router.push("/login");
-      } finally {
-        setInitializing(false);
+  const fetchHotspots = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `/api/hotspots?city=${city}&threshold=${threshold}&timeWindow=${timeWindow}`
+      );
+      const data = await response.json();
+
+      if (data.error) {
+        console.error("Error fetching hotspots:", data.error);
+        setHotspots(generateMockHotspots());
+      } else {
+        setHotspots(data.hotspots || generateMockHotspots());
       }
-    };
-
-    checkAuth();
-  }, [router]);
+    } catch (err) {
+      console.error("Error:", err);
+      setHotspots(generateMockHotspots());
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchStatistics = async () => {
     try {
-      // Use real data from our dataset
-      const generatedHotspots = generateHotspots();
-      setHotspots(generatedHotspots);
-      
-      setStats({
-        totalCrimes: REAL_CRIME_STATS.totalCrimes,
-        averageRiskLevel: REAL_CRIME_STATS.arrestRate / 100,
-        predictionAccuracy: REAL_CRIME_STATS.convictionRate / 100,
-        hotspotsCount: generatedHotspots.length,
-        timeSeriesData: REAL_CRIME_STATS.monthlyData.map(m => ({
-          date: m.label,
-          crimes: m.count,
-          predicted: Math.round(m.count * 0.92) // Simulate predictions
-        }))
-      });
+      const response = await fetch(`/api/statistics?city=${city}`);
+      const data = await response.json();
+
+      if (!data.error) {
+        setStats(data);
+      } else {
+        setStats({
+          hotspotsCount: hotspots.length,
+          totalCrimes: 2847,
+          averageRiskLevel: 0.62,
+          predictionAccuracy: 0.85,
+        });
+      }
     } catch (err) {
       console.error("Error fetching stats:", err);
     }
   };
 
-  const fetchUserReports = async () => {
-    if (!user?.id) return;
-    
-    setLoadingReports(true);
-    try {
-      const supabase = createClient();
-      const { data: reports, error } = await supabase
-        .from('crime_reports')
-        .select(`*, assigned_officer:assigned_officer_id (id, name, badge_number, status, current_location)`)
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
+  // User reports disabled (no database available)
 
-      if (error) {
-        console.error('Error fetching reports:', error);
-      } else {
-        // Show only approved reports in the main list
-        const approved = (reports || []).filter(r => r.verification_status === 'approved');
-        setUserReports(approved);
+  const generateMockHotspots = (): Hotspot[] => {
+    const locations: [number, number][] = [
+      [12.9352, 77.6245],
+      [12.9716, 77.5946],
+      [12.935, 77.62],
+      [13.0027, 77.5914],
+      [12.9142, 77.6391],
+    ];
 
-        // Keep a separate list with all reports (pending/approved) for assigned status visibility
-        setAllUserReports(reports || []);
-      }
-    } catch (err) {
-      console.error('Error fetching reports:', err);
-    } finally {
-      setLoadingReports(false);
-    }
+    return locations.map((loc, idx) => ({
+      id: `hotspot-${idx}`,
+      latitude: loc[0],
+      longitude: loc[1],
+      riskLevel: ["high", "medium", "low"][Math.floor(Math.random() * 3)] as
+        | "high"
+        | "medium"
+        | "low",
+      crimeCount: Math.floor(Math.random() * 50) + 10,
+    }));
   };
 
-  // Mock data for incidents - use real data patterns
-  const mockIncidents: Incident[] = generateRecentIncidents().map((incident, idx) => ({
-    id: incident.id,
-    type: incident.type,
-    location: incident.location,
-    time: new Date(incident.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-    reportedBy: "System",
-    priority: (["high", "medium", "low"] as const)[idx % 3],
-    status: incident.status === "pending" ? "active" : "resolved",
-  }));
+  // Mock data for incidents
+  const mockIncidents: Incident[] = [
+    {
+      id: "1",
+      type: "Robbery reported",
+      location: "Near MG Road Metro, Central Bengaluru",
+      time: "12:05 PM",
+      reportedBy: "Civilian",
+      priority: "high",
+      status: "active",
+    },
+    {
+      id: "2",
+      type: "Theft in progress",
+      location: "Jayanagar 4th Block, Shop #45",
+      time: "11:42 AM",
+      reportedBy: "Shop Owner",
+      priority: "medium",
+      status: "active",
+    },
+    {
+      id: "3",
+      type: "Vehicle accident",
+      location: "Outer Ring Road, Marathahalli",
+      time: "10:15 AM",
+      reportedBy: "Driver",
+      priority: "low",
+      status: "active",
+    },
+    {
+      id: "4",
+      type: "Public disturbance",
+      location: "Koramangala, Main Square",
+      time: "9:30 AM",
+      reportedBy: "Local Resident",
+      priority: "high",
+      status: "active",
+    },
+    {
+      id: "5",
+      type: "Suspicious package",
+      location: "Indiranagar, Near Police Station",
+      time: "Yesterday",
+      reportedBy: "Officer",
+      priority: "low",
+      status: "resolved",
+    },
+  ];
 
   // Mock data for officers
   const mockOfficers: Officer[] = [
@@ -177,168 +217,20 @@ export default function DashboardPage() {
 
   const handleAssignOfficer = (officerId: string) => {
     console.log("Assigning officer:", officerId);
-    alert(`Officer ${officerId} has been assigned to the incident.`);
-  };
-
-  const handleExportReport = () => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
-    let yPosition = margin;
-
-    // Set colors and fonts
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    doc.setTextColor(31, 41, 55); // slate-800
-    
-    // Title
-    doc.text("CRIME REPORT", margin, yPosition);
-    yPosition += 12;
-
-    // Report date
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(107, 114, 128); // slate-500
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, margin, yPosition);
-    yPosition += 12;
-
-    // Divider
-    doc.setDrawColor(226, 232, 240); // slate-200
-    doc.line(margin, yPosition, pageWidth - margin, yPosition);
-    yPosition += 8;
-
-    // Statistics Section
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(31, 41, 55);
-    doc.text("Overview Statistics", margin, yPosition);
-    yPosition += 8;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(55, 65, 81);
-
-    const stats_data = [
-      [`Total Crimes Reported: `, `${stats.totalCrimes.toLocaleString()}`],
-      [`Active Hotspots: `, `${stats.hotspotsCount}`],
-      [`Average Risk Level: `, `${(stats.averageRiskLevel * 100).toFixed(2)}%`],
-      [`Prediction Accuracy: `, `${(stats.predictionAccuracy * 100).toFixed(2)}%`],
-      [`Arrest Rate: `, `${(REAL_CRIME_STATS.arrestRate * 100).toFixed(2)}%`],
-      [`Conviction Rate: `, `${(REAL_CRIME_STATS.convictionRate * 100).toFixed(2)}%`],
-    ];
-
-    stats_data.forEach(([label, value]) => {
-      doc.text(label, margin + 5, yPosition);
-      doc.setFont("helvetica", "bold");
-      doc.text(value, pageWidth - margin - 30, yPosition);
-      doc.setFont("helvetica", "normal");
-      yPosition += 7;
-    });
-
-    yPosition += 5;
-
-    // Crime Types Section
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(31, 41, 55);
-    doc.text("Crime Distribution", margin, yPosition);
-    yPosition += 8;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(55, 65, 81);
-
-    REAL_CRIME_STATS.crimeTypes.forEach((crime: any) => {
-      if (yPosition > pageHeight - margin - 10) {
-        doc.addPage();
-        yPosition = margin;
-      }
-      const percentage = ((crime.count / stats.totalCrimes) * 100).toFixed(1);
-      doc.text(`• ${crime.type}: ${crime.count.toLocaleString()} (${percentage}%)`, margin + 5, yPosition);
-      yPosition += 6;
-    });
-
-    yPosition += 8;
-
-    // Recent Incidents Section
-    if (yPosition > pageHeight - margin - 20) {
-      doc.addPage();
-      yPosition = margin;
-    }
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(31, 41, 55);
-    doc.text("Recent Incidents", margin, yPosition);
-    yPosition += 8;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(55, 65, 81);
-
-    const recentIncidents = generateRecentIncidents().slice(0, 5);
-    recentIncidents.forEach((incident: any, index: number) => {
-      if (yPosition > pageHeight - margin - 10) {
-        doc.addPage();
-        yPosition = margin;
-      }
-      doc.text(`${index + 1}. ${incident.type} - ${incident.location}`, margin + 5, yPosition);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(107, 114, 128);
-      doc.text(`   Date: ${new Date(incident.date).toLocaleDateString()} | Status: ${incident.status}`, margin + 8, yPosition + 4);
-      doc.setTextColor(55, 65, 81);
-      yPosition += 10;
-    });
-
-    // Footer
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(8);
-    doc.setTextColor(156, 163, 175); // slate-400
-    doc.text("OpenSight Crime Analytics Dashboard", margin, pageHeight - 10);
-    doc.text(`Report Generated on ${new Date().toLocaleDateString()}`, pageWidth - margin - 50, pageHeight - 10);
-
-    // Save PDF
-    doc.save(`Crime_Report_${new Date().getTime()}.pdf`);
-  };
-
-  const handleGenerateReport = () => {
-    router.push('/report');
-  };
-
-  const handleViewDetails = () => {
-    router.push('/analytics');
+    // Add assignment logic here
   };
 
   useEffect(() => {
-    if (!user) return;
+    fetchHotspots();
+  }, [city, threshold, timeWindow]);
 
-    fetchStatistics();
-    fetchUserReports();
+  useEffect(() => {
+    if (hotspots.length > 0) {
+      fetchStatistics();
+    }
+  }, [hotspots, city]);
 
-    // Subscribe to user's report changes (assignment, verification, status)
-    const supabase = createClient();
-    const channel = supabase
-      .channel(`user-reports:${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'crime_reports',
-          filter: `user_id=eq.${user.id}`
-        },
-        (payload) => {
-          // Re-fetch reports when anything changes for this user
-          fetchUserReports();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
+  // user reports disabled
 
   if (initializing) {
     return (
@@ -377,46 +269,48 @@ export default function DashboardPage() {
                 Crime Hotspot Analytics
               </h1>
               <p className="text-slate-600 text-lg">
-                Real-time predictions for Bengaluru
+                Real-time predictions for {city.charAt(0).toUpperCase() + city.slice(1)}
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex gap-3">
               <button
-                onClick={handleViewDetails}
-                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2"
+                onClick={fetchHotspots}
+                disabled={loading}
+                className="px-6 py-3 bg-white border-2 border-slate-200 text-slate-900 font-semibold rounded-xl hover:bg-slate-50 hover:border-emerald-300 transition-all duration-300 disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                View Details
-              </button>
-              <button
-                onClick={handleExportReport}
-                className="px-6 py-3 bg-white hover:bg-slate-50 text-slate-900 font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-slate-200 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-                Download PDF
-              </button>
-              <button
-                onClick={handleGenerateReport}
-                className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Full Report
+                {loading ? <LoadingSpinner size="sm" /> : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )}
+                {loading ? "Refreshing..." : "Refresh"}
               </button>
             </div>
           </div>
         </div>
+
+        {/* Control Panel */}
+        <div className="mb-8 animate-slide-in-down">
+          <ControlPanel
+            city={city}
+            onCityChange={setCity}
+            threshold={threshold}
+            onThresholdChange={setThreshold}
+            timeWindow={timeWindow}
+            onTimeWindowChange={setTimeWindow}
+            onRefresh={fetchHotspots}
+            loading={loading}
+          />
+        </div>
+
         {/* Statistics */}
         <div className="mb-8 animate-fade-in-up">
           <Statistics
             hotspotsCount={stats.hotspotsCount}
             totalCrimes={stats.totalCrimes}
+            averageRiskLevel={stats.averageRiskLevel}
             predictionAccuracy={stats.predictionAccuracy}
+            timeSeriesData={stats.timeSeriesData}
           />
         </div>
 
@@ -428,6 +322,9 @@ export default function DashboardPage() {
                 <h2 className="text-2xl md:text-3xl font-bold text-slate-900">
                   Crime Hotspot Map
                 </h2>
+                <p className="text-slate-600 text-sm mt-1">
+                  Interactive map showing crime risk levels across the city
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-medium">
@@ -438,13 +335,63 @@ export default function DashboardPage() {
             </div>
             
             {/* Map Filters */}
+            <div className="flex flex-wrap gap-3 mt-4">
+              <select
+                value={districtFilter}
+                onChange={(e) => setDistrictFilter(e.target.value)}
+                aria-label="Filter by district"
+                className="border-2 border-slate-300 rounded-lg px-4 py-2 text-sm bg-slate-50 text-slate-900 font-semibold hover:bg-slate-100 hover:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+              >
+                <option value="all">All Districts</option>
+                <option value="koramangala">Koramangala</option>
+                <option value="indiranagar">Indiranagar</option>
+                <option value="whitefield">Whitefield</option>
+                <option value="jayanagar">Jayanagar</option>
+                <option value="marathahalli">Marathahalli</option>
+                <option value="electronic-city">Electronic City</option>
+              </select>
+              <select
+                value={incidentTypeFilter}
+                onChange={(e) => setIncidentTypeFilter(e.target.value)}
+                aria-label="Filter by incident type"
+                className="border-2 border-slate-300 rounded-lg px-4 py-2 text-sm bg-slate-50 text-slate-900 font-semibold hover:bg-slate-100 hover:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+              >
+                <option value="all">All Incident Types</option>
+                <option value="theft">Theft</option>
+                <option value="riot">Riot</option>
+                <option value="gunfire">Gunfire</option>
+                <option value="assault">Assault</option>
+                <option value="suspicious">Suspicious Activity</option>
+              </select>
+            </div>
           </div>
-          <StreamlitDashboard/>
-        </div>
-
-        {/* Trend Chart */}
-        <div className="mb-8 animate-fade-in-up">
-          <TrendChart timeSeriesData={stats.timeSeriesData} />
+          <div className="rounded-xl overflow-hidden border-2 border-slate-200 shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <HotspotMap hotspots={hotspots} center={[12.9716, 77.5946]} />
+          </div>
+          
+          {/* Map Legend */}
+          <div className="mt-4 p-3 bg-slate-50 rounded-lg flex justify-between items-center">
+            <div className="flex gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span className="text-xs font-medium text-slate-700">High Priority</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <span className="text-xs font-medium text-slate-700">Medium</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <span className="text-xs font-medium text-slate-700">Low</span>
+              </div>
+            </div>
+            <button className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold flex items-center gap-1">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+              Fullscreen
+            </button>
+          </div>
         </div>
 
         {/* Map and Incident List Grid */}
@@ -547,36 +494,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* My Pending & Assigned Submissions */}
-        {allUserReports && allUserReports.filter(r => r.verification_status === 'pending').length > 0 && (
-          <div className="mb-6">
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-              <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
-                <h3 className="text-lg font-bold text-slate-900">My Submitted Reports (Pending)</h3>
-                <p className="text-sm text-slate-600 mt-1">Reports awaiting admin verification. Assigned officers (if any) will appear here.</p>
-              </div>
-
-              <div className="p-4">
-                {allUserReports.filter(r => r.verification_status === 'pending').map((report) => (
-                  <div key={report.id} className="flex items-center justify-between py-3 border-b border-slate-100">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">{report.crime_type.replace('_', ' ')}</div>
-                      <div className="text-xs text-slate-500">{report.location}, {report.district} • {new Date(report.created_at).toLocaleDateString()}</div>
-                    </div>
-                    <div className="text-right">
-                      {report.assigned_officer ? (
-                        <div className="text-sm font-semibold text-slate-900">Assigned: {report.assigned_officer.name}</div>
-                      ) : (
-                        <div className="text-sm text-slate-500">No officer assigned yet</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* My Crime Reports */}
         {userReports.length > 0 && (
           <div className="mb-8">
@@ -608,9 +525,6 @@ export default function DashboardPage() {
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
                         Priority
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
-                        Assigned Officer
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
                         Status
@@ -655,18 +569,6 @@ export default function DashboardPage() {
                             {report.priority.toUpperCase()}
                           </span>
                         </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {report.assigned_officer ? (
-                            <div className="text-sm text-slate-900">
-                              <div className="font-semibold">{report.assigned_officer.name}</div>
-                              <div className="text-xs text-slate-500">{report.assigned_officer.badge_number}</div>
-                            </div>
-                          ) : (
-                            <div className="text-sm text-slate-500">Unassigned</div>
-                          )}
-                        </td>
-
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
                             className={`px-3 py-1 text-xs font-bold rounded-full ${
@@ -695,29 +597,28 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <OfficerDeployment
             officers={mockOfficers}
-            totalOfficers={REAL_CRIME_STATS.arrested}
+            totalOfficers={56}
             onAssignOfficer={handleAssignOfficer}
           />
           
           <WeeklyReport
-            dateRange={`Total Analysis - 2020-2024`}
-            hotspots={REAL_CRIME_STATS.crimeTypes.slice(0, 3).map((crime, idx) => ({
-              name: crime.type,
-              incidents: crime.count,
-              change: Math.floor(Math.random() * 40) - 20
-            }))}
-            trends={REAL_CRIME_STATS.crimeTypes.slice(3, 5).map((crime, idx) => ({
-              title: crime.type,
-              change: Math.floor(Math.random() * 40) - 20,
-              details: `${crime.count} cases reported`
-            }))}
-            metrics={[
-              { value: `${REAL_CRIME_STATS.arrestRate.toFixed(1)}%`, label: "Arrest Rate" },
-              { value: `${REAL_CRIME_STATS.convictionRate.toFixed(1)}%`, label: "Conviction Rate" },
-              { value: `${REAL_CRIME_STATS.yearlyData[REAL_CRIME_STATS.yearlyData.length - 1].count}`, label: "2024 Cases" },
+            dateRange="January 10-16, 2026"
+            hotspots={[
+              { name: "Koramangala", incidents: 42, change: 18 },
+              { name: "Whitefield", incidents: 28, change: 5 },
+              { name: "Indiranagar", incidents: 19, change: -3 },
             ]}
-            onDownload={handleExportReport}
-            onGenerateCustom={handleGenerateReport}
+            trends={[
+              { title: "Daytime thefts", change: 32, details: "10am-2pm in commercial areas" },
+              { title: "Vehicle theft", change: -15, details: "Evenings in IT corridors" },
+            ]}
+            metrics={[
+              { value: "18m", label: "Avg response" },
+              { value: "92%", label: "Resolution rate" },
+              { value: "4.7/5", label: "Public satisfaction" },
+            ]}
+            onDownload={() => console.log("Downloading report...")}
+            onGenerateCustom={() => console.log("Generating custom report...")}
           />
         </div>
       </main>

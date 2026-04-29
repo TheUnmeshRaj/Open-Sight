@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, MapPin, Save, Edit2, CheckCircle, Camera, AlertCircle, Phone, CreditCard } from 'lucide-react';
-import { updateUserProfile, getUserProfile, subscribeToUserProfile, uploadUserAvatar, getUserAvatarUrl } from '../../lib/supabase/database';
+// Supabase removed — provide local stubs to avoid runtime errors
+const getUserProfile = async (userId) => null;
+const getUserAvatarUrl = (userId) => null;
+const subscribeToUserProfile = (userId, callback) => ({ unsubscribe: () => {} });
+const uploadUserAvatar = async (userId, file) => null;
+const updateUserProfile = async (userId, profileData) => null;
 
 export function UserDashboard({ authUser }) {
   const [isEditing, setIsEditing] = useState(false);
