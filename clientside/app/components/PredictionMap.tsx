@@ -21,10 +21,6 @@ const Popup = dynamic(
   () => import("react-leaflet").then((mod) => mod.Popup),
   { ssr: false }
 );
-const MapConsumer = dynamic(
-  () => import("react-leaflet").then((mod) => mod.MapConsumer),
-  { ssr: false }
-);
 
 import "leaflet/dist/leaflet.css";
 

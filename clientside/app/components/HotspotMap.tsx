@@ -31,6 +31,7 @@ interface Cluster {
 interface MapProps {
   hotspots: Hotspot[];
   center?: [number, number];
+  onLocationSelect?: (loc: { lat: number; lng: number }) => void;
 }
 
 // Utility: Calculate distance between two points (in km)
@@ -185,9 +186,24 @@ const generateConvexHull = (hotspots: Hotspot[]): [number, number][] => {
   });
 };
 
+// Minimal LocationSelector used only when `onLocationSelect` is provided.
+const LocationSelector: React.FC<{ onSelect: (loc: { lat: number; lng: number }) => void }> = ({ onSelect }) => {
+  return (
+    <div className="absolute left-4 bottom-4 z-[1000]">
+      <button
+        onClick={() => onSelect({ lat: 12.9716, lng: 77.5946 })}
+        className="bg-white border rounded-md px-3 py-1 text-sm shadow"
+      >
+        Select Center
+      </button>
+    </div>
+  );
+};
+
 const HotspotMap: React.FC<MapProps> = ({
   hotspots,
   center = [12.9716, 77.5946],
+  onLocationSelect,
 }) => {
   const [showClusters, setShowClusters] = useState(true);
   const [distanceThreshold, setDistanceThreshold] = useState(1.5); // km
